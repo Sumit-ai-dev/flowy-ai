@@ -136,13 +136,13 @@ SUPERVISOR_PROMPT = """You are the Flowy Orchestrator Agent.
 Your job is to read a meeting transcript and output a structured context summary that will be passed to 4 specialized sub-agents.
 
 Extract and return EXACTLY this JSON:
-{
+{{
   "meeting_type": "sprint_planning | retrospective | design_review | incident | general",
   "team_focus": "one-sentence description of what the team is working on",
   "key_people": ["list", "of", "names", "mentioned"],
   "top_priority": "the single most critical decision or action from this meeting",
   "tone": "urgent | relaxed | technical | strategic"
-}
+}}
 
 Return ONLY valid JSON. No markdown, no explanation."""
 
@@ -153,7 +153,7 @@ SUPERVISOR CONTEXT:
 {supervisor_context}
 
 Your job: Write a crisp 5-8 line executive summary. Focus on key decisions, risks, blockers, and owners.
-Format as clean bullet points starting with an emoji. Be factual and sharp."""
+Format as clean, professional bullet points. Be factual and sharp."""
 
 SLACK_PROMPT = """You are the Flowy Slack Agent (powered by {model}).
 Write a punchy Slack message for #product-updates based on this transcript.
@@ -163,7 +163,7 @@ SUPERVISOR CONTEXT (use this to set the right tone):
 
 Rules:
 - Max 5 bullet points
-- Use relevant emoji
+- Do NOT use emojis
 - Mention owners by name
 - End with next steps
 - Tone should match: {tone}"""
@@ -178,15 +178,15 @@ MEETING SUMMARY (from Summary Agent):
 
 From the transcript, identify the SINGLE most strategically important feature. Write an investor-ready PRD:
 
-## 🎯 Feature Name
-## 📌 Problem Statement  
-## 🏆 Goal (one measurable sentence)
-## 👤 Target User
-## 📖 User Stories (exactly 3)
-## ✅ Acceptance Criteria (4-6 testable items)
-## 📊 Success Metrics (3 metrics with numbers)
-## 🚫 Out of Scope (v1)
-## ⚡ Dependencies & Risks
+## Feature Name
+## Problem Statement  
+## Goal (one measurable sentence)
+## Target User
+## User Stories (exactly 3)
+## Acceptance Criteria (4-6 testable items)
+## Success Metrics (3 metrics with numbers)
+## Out of Scope (v1)
+## Dependencies & Risks
 
 Be concrete. Use numbers. A PM should hand this directly to engineers."""
 
@@ -378,31 +378,33 @@ def push_to_jira(ticket: JiraTicketOut, project_key: str, valid_issue_types: Lis
 # ─────────────────────────────────────────────
 
 async def run_flowy_pipeline(transcript: str, jira_project_key: Optional[str]) -> FlowOutput:
-    from langchain_core.prompts import ChatPromptTemplate
+    from langchain_core.messages import HumanMessage, SystemMessage
 
     steps = []
     models = get_model_names()
-
-    # ── STAGE 1: SUPERVISOR ─────────────────────────────────────────────
-    steps.append(f"🧠 Supervisor Agent analyzing transcript context...")
     fast_llm  = get_fast_llm()
     smart_llm = get_smart_llm()
 
-    supervisor_chain = (
-        ChatPromptTemplate.from_messages([
-            ("system", SUPERVISOR_PROMPT),
-            ("human", "{transcript}")
-        ]) | fast_llm
-    )
-    supervisor_raw = (await supervisor_chain.ainvoke({"transcript": transcript})).content
+    # ── STAGE 1: SUPERVISOR ─────────────────────────────────────────────
+    steps.append("Supervisor Agent analyzing transcript context...")
 
-    # Parse supervisor context
+    supervisor_system = (
+        "You are the Flowy Orchestrator Agent. Read the meeting transcript and output structured context "
+        "for 4 specialized sub-agents. Return EXACTLY this JSON and nothing else:\n"
+        '{"meeting_type":"sprint_planning|retrospective|design_review|incident|general",'
+        '"team_focus":"one-sentence description",'
+        '"key_people":["names","mentioned"],'
+        '"top_priority":"the single most critical action",'
+        '"tone":"urgent|relaxed|technical|strategic"}'
+    )
+
+    supervisor_raw = (await fast_llm.ainvoke([
+        SystemMessage(content=supervisor_system),
+        HumanMessage(content=transcript)
+    ])).content
+
     try:
-        clean = supervisor_raw.strip()
-        if clean.startswith("```"):
-            clean = "\n".join(clean.split("\n")[1:])
-        if clean.endswith("```"):
-            clean = "\n".join(clean.split("\n")[:-1])
+        clean = supervisor_raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         supervisor_ctx = json.loads(clean)
         supervisor_context = json.dumps(supervisor_ctx, indent=2)
         tone = supervisor_ctx.get("tone", "strategic")
@@ -412,97 +414,115 @@ async def run_flowy_pipeline(transcript: str, jira_project_key: Optional[str]) -
         tone = "strategic"
         meeting_type = "general"
 
-    steps.append(f"✅ Supervisor identified: {meeting_type} meeting | Tone: {tone}")
-    steps.append(f"⚡ Dispatching 4 specialized agents in PARALLEL...")
-    steps.append(f"   📋 Summary Agent  → {models['fast']}")
-    steps.append(f"   💬 Slack Agent    → {models['fast']}")
-    steps.append(f"   📄 PRD Agent      → {models['smart']}")
-    steps.append(f"   🎯 Ticket Agent   → {models['smart']}")
+    steps.append(f"Supervisor identified: {meeting_type} meeting | Tone: {tone}")
+    steps.append("Dispatching 4 specialized agents in PARALLEL...")
+    steps.append(f"   Summary Agent  -> {models['fast']}")
+    steps.append(f"   Slack Agent    -> {models['fast']}")
+    steps.append(f"   PRD Agent      -> {models['smart']}")
+    steps.append(f"   Ticket Agent   -> {models['smart']}")
 
-    # ── STAGE 2: PARALLEL AGENT EXECUTION ───────────────────────────────
+    # ── STAGE 2: PARALLEL AGENT EXECUTION (direct messages — no templates) ──
 
-    summary_chain = (
-        ChatPromptTemplate.from_messages([
-            ("system", SUMMARY_PROMPT.format(model=models["fast"], supervisor_context=supervisor_context)),
-            ("human", "{transcript}")
-        ]) | fast_llm
+    summary_sys = (
+        f"You are the Flowy Summary Agent (powered by {models['fast']}).\n"
+        f"Supervisor context:\n{supervisor_context}\n\n"
+        "Write a crisp 5-8 line executive summary from the transcript below. "
+        "Focus on key decisions, risks, blockers, owners. Use professional bullet points."
     )
 
-    slack_chain = (
-        ChatPromptTemplate.from_messages([
-            ("system", SLACK_PROMPT.format(model=models["fast"], supervisor_context=supervisor_context, tone=tone)),
-            ("human", "{transcript}")
-        ]) | fast_llm
+    slack_sys = (
+        f"You are the Flowy Slack Agent (powered by {models['fast']}).\n"
+        f"Supervisor tone context:\n{supervisor_context}\n\n"
+        "Write a punchy Slack message for #product-updates from the transcript. "
+        f"Max 5 bullets, do NOT use emojis, mention owners by name, end with next steps. Tone: {tone}."
     )
 
-    ticket_chain = (
-        ChatPromptTemplate.from_messages([
-            ("system", TICKET_PROMPT.format(model=models["smart"], supervisor_context=supervisor_context)),
-            ("human", "{transcript}")
-        ]) | smart_llm
+    ticket_sys = (
+        f"You are the Flowy Ticket Agent (powered by {models['smart']}).\n"
+        f"Supervisor context:\n{supervisor_context}\n\n"
+        "Extract ALL action items from the transcript as Jira tickets. "
+        "Return ONLY a valid JSON array (no markdown). Each item must have: "
+        "summary (string, max 80 chars, starts with verb), "
+        "description (string, acceptance criteria), "
+        "issue_type (Bug or Story or Task), "
+        "priority (High or Medium or Low), "
+        "assignee (first name or Unassigned), "
+        "due_hint (natural language deadline or 'next week'), "
+        "labels (array of single words, NO spaces)."
     )
 
-    # Run Summary, Slack, Tickets in parallel (PRD needs summary first for context)
-    summary_task  = summary_chain.ainvoke({"transcript": transcript})
-    slack_task    = slack_chain.ainvoke({"transcript": transcript})
-    ticket_task   = ticket_chain.ainvoke({"transcript": transcript})
+    async def call_summary():
+        return (await fast_llm.ainvoke([
+            SystemMessage(content=summary_sys),
+            HumanMessage(content=transcript)
+        ])).content
 
-    summary_result, slack_result, ticket_result = await asyncio.gather(
-        summary_task, slack_task, ticket_task
+    async def call_slack():
+        return (await fast_llm.ainvoke([
+            SystemMessage(content=slack_sys),
+            HumanMessage(content=transcript)
+        ])).content
+
+    async def call_tickets():
+        return (await smart_llm.ainvoke([
+            SystemMessage(content=ticket_sys),
+            HumanMessage(content=transcript)
+        ])).content
+
+    meeting_summary, slack_update, raw_ticket_text = await asyncio.gather(
+        call_summary(), call_slack(), call_tickets()
     )
 
-    meeting_summary  = summary_result.content
-    slack_update     = slack_result.content
-    raw_ticket_text  = ticket_result.content
-
-    steps.append(f"✅ Summary Agent complete")
-    steps.append(f"✅ Slack Agent complete")
-    steps.append(f"✅ Ticket Agent complete")
+    steps.append("Summary Agent complete")
+    steps.append("Slack Agent complete")
+    steps.append("Ticket Agent complete")
 
     # ── STAGE 3: PRD AGENT (uses summary as shared context) ─────────────
-    steps.append(f"📄 PRD Agent writing requirements doc (using summary context)...")
-    prd_chain = (
-        ChatPromptTemplate.from_messages([
-            ("system", PRD_PROMPT.format(
-                model=models["smart"],
-                supervisor_context=supervisor_context,
-                meeting_summary=meeting_summary
-            )),
-            ("human", "{transcript}")
-        ]) | smart_llm
+    steps.append("PRD Agent writing requirements doc (using summary context)...")
+
+    prd_sys = (
+        f"You are the Flowy PRD Agent (powered by {models['smart']}), a world-class Senior Product Manager.\n"
+        f"Supervisor context:\n{supervisor_context}\n\n"
+        f"Meeting summary from Summary Agent:\n{meeting_summary}\n\n"
+        "From the transcript, write an investor-ready PRD for the most important feature. Include: "
+        "Feature Name, Problem Statement, Goal (one measurable sentence), Target User, "
+        "3 User Stories, 4-6 Acceptance Criteria, 3 Success Metrics with numbers, "
+        "Out of Scope (v1), Dependencies and Risks. Be concrete with numbers. Do NOT use emojis."
     )
-    prd_result = await prd_chain.ainvoke({"transcript": transcript})
-    prd_draft  = prd_result.content
-    steps.append(f"✅ PRD Agent complete")
+
+    prd_draft = (await smart_llm.ainvoke([
+        SystemMessage(content=prd_sys),
+        HumanMessage(content=transcript)
+    ])).content
+    steps.append("PRD Agent complete")
 
     # ── STAGE 4: TICKET CLASSIFICATION ──────────────────────────────────
-    steps.append(f"⚙️ Classifying priorities, due dates, and issue types...")
+    steps.append("Classifying priorities, due dates, and issue types...")
     raw_tickets = []
     try:
         clean = raw_ticket_text.strip()
-        if clean.startswith("```"):
-            clean = "\n".join(clean.split("\n")[1:])
-        if clean.endswith("```"):
-            clean = "\n".join(clean.split("\n")[:-1])
+        if "```" in clean:
+            lines = clean.split("\n")
+            clean = "\n".join(l for l in lines if not l.strip().startswith("```"))
         raw_tickets = json.loads(clean)
     except Exception:
         raw_tickets = []
 
     tickets = [enrich_ticket(t, i) for i, t in enumerate(raw_tickets)]
-    steps.append(f"✅ {len(tickets)} tickets classified and enriched")
+    steps.append(f"{len(tickets)} tickets classified and enriched")
 
     # ── STAGE 5: JIRA PUSH ───────────────────────────────────────────────
     jira_links = []
     jira_error = None
     if jira_project_key and tickets:
-        steps.append(f"🔐 Validating Jira connection to '{jira_project_key}'...")
+        steps.append(f"Validating Jira connection to '{jira_project_key}'...")
         validation = validate_jira_connection(jira_project_key)
         if not validation.connected:
             jira_error = validation.error
-            steps.append(f"⚠️ Jira error: {validation.error}")
+            steps.append(f"Jira error: {validation.error}")
         else:
-            steps.append(f"✅ Connected to Jira: {validation.project_name}")
-            steps.append(f"🚀 Pushing {len(tickets)} tickets to Jira...")
+            steps.append(f"Connected to Jira: {validation.project_name}")
+            steps.append(f"Pushing {len(tickets)} tickets to Jira...")
             push_errors = []
             for t in tickets:
                 key, url, err = push_to_jira(t, jira_project_key, validation.issue_types, validation.priorities)
@@ -513,14 +533,14 @@ async def run_flowy_pipeline(transcript: str, jira_project_key: Optional[str]) -
                 elif err:
                     push_errors.append(f"{t.ticket_id}: {err}")
             if jira_links:
-                steps.append(f"✅ {len(jira_links)}/{len(tickets)} tickets pushed live to Jira!")
+                steps.append(f"{len(jira_links)}/{len(tickets)} tickets pushed live to Jira")
             if push_errors:
                 jira_error = " | ".join(push_errors)
-                steps.append(f"⚠️ {len(push_errors)} ticket(s) failed: check jira_error")
+                steps.append(f"Some ticket(s) failed")
     else:
-        steps.append("ℹ️ Simulation mode — add Jira project key to push real tickets")
+        steps.append("Simulation mode — add Jira project key to push real tickets")
 
-    steps.append("🎉 Multi-agent pipeline complete!")
+    steps.append("Multi-agent pipeline complete")
 
     return FlowOutput(
         meeting_summary=meeting_summary,
@@ -533,6 +553,7 @@ async def run_flowy_pipeline(transcript: str, jira_project_key: Optional[str]) -
     )
 
 # ─────────────────────────────────────────────
+
 # FASTAPI APP
 # ─────────────────────────────────────────────
 
@@ -601,6 +622,21 @@ def health():
 class SlackSendRequest(BaseModel):
     message: str
 
+def _md_to_mrkdwn(text: str) -> str:
+    """Convert standard markdown to Slack mrkdwn format."""
+    import re
+    # **bold** → *bold*
+    text = re.sub(r'\*\*(.+?)\*\*', r'*\1*', text)
+    # __bold__ → *bold*
+    text = re.sub(r'__(.+?)__', r'*\1*', text)
+    # _italic_  → _italic_  (already correct)
+    # `code` stays as-is
+    # ### Heading → *Heading*
+    text = re.sub(r'^#{1,3}\s+(.+)$', r'*\1*', text, flags=re.MULTILINE)
+    # [text](url) → <url|text>
+    text = re.sub(r'\[(.+?)\]\((https?://[^\)]+)\)', r'<\2|\1>', text)
+    return text
+
 @app.post("/slack/send")
 def slack_send(req: SlackSendRequest):
     webhook_url = os.getenv("SLACK_WEBHOOK_URL", "")
@@ -608,8 +644,45 @@ def slack_send(req: SlackSendRequest):
         raise HTTPException(status_code=400, detail="SLACK_WEBHOOK_URL not set in .env")
     if not req.message.strip():
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    formatted = _md_to_mrkdwn(req.message)
+
+    # Use Slack Block Kit for rich, structured formatting
+    payload = {
+        "blocks": [
+            {
+                "type": "header",
+                "text": {
+                    "type": "plain_text",
+                    "text": "Flowy AI - Product Update",
+                    "emoji": False
+                }
+            },
+            {"type": "divider"},
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": formatted
+                }
+            },
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "Generated by *Flowy AI* · Multi-Agent Chief of Staff"
+                    }
+                ]
+            }
+        ],
+        # Fallback plain text for notifications
+        "text": "🤖 Flowy AI — Product Update"
+    }
+
     try:
-        resp = requests.post(webhook_url, json={"text": req.message}, timeout=10)
+        resp = requests.post(webhook_url, json=payload, timeout=10)
         if resp.status_code == 200 and resp.text == "ok":
             return {"status": "sent", "message": "Posted to Slack ✅"}
         raise HTTPException(status_code=400, detail=f"Slack error: {resp.text}")

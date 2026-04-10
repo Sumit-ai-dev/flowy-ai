@@ -36,13 +36,13 @@ export function FlowyWorkspace() {
   // Simulated agent steps for the UI (the actual API is processing in background)
   const [agentLogs, setAgentLogs] = useState<string[]>([]);
   const agentMockSteps = [
-    "🔍 Reading transcript...",
-    "📋 Summary Agent running...",
-    "💬 Slack Update Agent running...",
-    "📄 PRD Agent running...",
-    "🎯 Ticket Generator Agent running...",
-    "⚙️ Classifying priorities and due dates...",
-    "🚀 Pushing tickets to Jira..."
+    "Reading transcript...",
+    "Summary Agent running...",
+    "Slack Update Agent running...",
+    "PRD Agent running...",
+    "Ticket Generator Agent running...",
+    "Classifying priorities and due dates...",
+    "Pushing tickets to Jira..."
   ];
 
   useEffect(() => {
@@ -78,12 +78,12 @@ export function FlowyWorkspace() {
       if (result.processing_steps && result.processing_steps.length > 0) {
          setAgentLogs(result.processing_steps);
       } else {
-         setAgentLogs(curr => [...curr, "🎉 Pipeline complete!"]);
+         setAgentLogs(curr => [...curr, "Pipeline complete"]);
       }
-      toast.success('Generated successfully!');
+      toast.success('Generated successfully');
     } catch (e: any) {
       toast.error(e.message || 'Error running agents.');
-      setAgentLogs(curr => [...curr, "❌ Error processing transcript!"]);
+      setAgentLogs(curr => [...curr, "Error processing transcript"]);
     } finally {
       setIsLoading(false);
     }
@@ -103,16 +103,15 @@ export function FlowyWorkspace() {
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-2">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-2 min-h-0">
       
       {/* Left Pane: Input */}
-      <div className="flex flex-col h-full space-y-4">
-        <h2 className="text-xl font-bold flex items-center gap-2">
-          <Icons.dashboard className="size-5 text-primary" />
+      <div className="flex flex-col h-full space-y-4 min-h-0">
+        <h2 className="text-xl font-bold flex items-center gap-2 font-inter">
           Flowy AI Input
         </h2>
-        <Card className="flex flex-col flex-grow border shadow-sm">
-          <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between">
+        <Card className="flex flex-col flex-grow border shadow-sm min-h-0 overflow-hidden font-inter">
+          <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between shrink-0">
              <CardTitle className="text-sm font-medium">Meeting Transcript</CardTitle>
              <button
                onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
@@ -121,15 +120,15 @@ export function FlowyWorkspace() {
                Load Sample →
              </button>
           </CardHeader>
-          <CardContent className="p-0 flex flex-col flex-grow">
+          <CardContent className="p-0 relative flex-grow min-h-0">
             <Textarea
               placeholder="Paste the raw meeting transcript here. Our AI PM layer will do the rest..."
-              className="flex-grow min-h-[300px] border-0 rounded-none focus-visible:ring-0 resize-none p-4 text-sm"
+              className="absolute inset-0 border-0 rounded-none focus-visible:ring-0 resize-none p-4 text-sm overflow-y-auto"
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
             />
           </CardContent>
-          <CardFooter className="flex justify-between items-center p-4 bg-muted/10 border-t">
+          <CardFooter className="flex justify-between items-center p-4 bg-muted/10 border-t shrink-0">
             <div className="flex flex-col gap-2">
               <div className="text-xs text-muted-foreground font-mono">
                 {transcript.split(' ').filter(Boolean).length} words
@@ -159,13 +158,12 @@ export function FlowyWorkspace() {
       </div>
 
       {/* Right Pane: Logs / Output */}
-      <div className="flex flex-col h-full space-y-4">
+      <div className="flex flex-col h-full space-y-4 min-h-0 font-inter">
         <h2 className="text-xl font-bold flex items-center gap-2">
-          <Icons.post className="size-5 text-primary" />
           Magic Output
         </h2>
         
-        <Card className="flex flex-col flex-grow border shadow-sm overflow-hidden bg-background">
+        <Card className="flex flex-col flex-grow border shadow-sm overflow-hidden bg-background min-h-0">
           {(!output && !isLoading) && (
             <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground p-8 text-center space-y-4">
                <Icons.page className="size-12 opacity-20" />
@@ -205,7 +203,7 @@ export function FlowyWorkspace() {
                  </TabsList>
                </div>
 
-               <div className="flex-grow overflow-y-auto p-4 max-h-[600px]">
+               <div className="flex-grow overflow-y-auto p-4 min-h-0">
                  <TabsContent value="tickets" className="mt-0 h-full space-y-4">
                     {output.jira_error && (
                       <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md border border-destructive/20">
@@ -215,7 +213,7 @@ export function FlowyWorkspace() {
                     
                     {output.jira_links.length > 0 && (
                       <div className="bg-emerald-500/10 text-emerald-600 text-sm p-3 rounded-md border border-emerald-500/20 mb-4 flex flex-col gap-2">
-                         <div className="font-bold flex items-center gap-1"><Icons.check className="size-4" /> Live Jira Links</div>
+                         <div className="font-bold flex items-center gap-1">Live Jira Links</div>
                          <div className="flex flex-wrap gap-2">
                            {output.jira_links.map((link, i) => (
                               <a key={i} href={link} target="_blank" rel="noreferrer" className="text-xs hover:underline bg-background px-2 py-1 rounded shadow-sm border border-emerald-500/30">
