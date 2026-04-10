@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flowy — AI Chief of Staff for Product Managers</title>
+  <meta name="description" content="Flowy transforms messy meeting transcripts into Jira tickets, PRDs, and Slack updates in seconds. The AI agent that does your PM work for you." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- Navigation -->
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <a href="#" class="logo">
+        <span class="logo-icon">⚡</span>
+        <span class="logo-text">Flowy</span>
+        <span class="logo-badge">AI PM Agent</span>
+      </a>
+      <div class="nav-links">
+        <a href="#demo" class="nav-link">Demo</a>
+        <a href="#how" class="nav-link">How It Works</a>
+        <span class="nav-status" id="apiStatus">● Connecting...</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="hero" id="home">
+    <div class="hero-bg">
+      <div class="hero-orb orb-1"></div>
+      <div class="hero-orb orb-2"></div>
+      <div class="hero-orb orb-3"></div>
+    </div>
+    <div class="hero-content">
+      <div class="hero-badge">
+        <span class="badge-dot"></span>
+        <span>Literally on YC's Request for Startups List</span>
+      </div>
+      <h1 class="hero-title">
+        Your meetings decide.<br />
+        <span class="gradient-text">Flowy ships.</span>
+      </h1>
+      <p class="hero-sub">
+        Paste any meeting transcript. In 8 seconds, Flowy generates Jira tickets,<br />
+        a product PRD, and your Slack update — automatically.
+      </p>
+      <div class="hero-stats">
+        <div class="stat">
+          <span class="stat-num">8s</span>
+          <span class="stat-label">Average processing time</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">3h</span>
+          <span class="stat-label">Saved per PM per day</span>
+        </div>
+        <div class="stat-div"></div>
+        <div class="stat">
+          <span class="stat-num">9M</span>
+          <span class="stat-label">Product managers worldwide</span>
+        </div>
+      </div>
+      <a href="#demo" class="cta-btn">
+        <span>See the magic →</span>
+      </a>
+    </div>
+    <div class="hero-scroll-hint">↓</div>
+  </section>
+
+  <!-- How It Works -->
+  <section class="how-section" id="how">
+    <div class="container">
+      <h2 class="section-title">Four AI Agents. One Pipeline.</h2>
+      <p class="section-sub">Under the hood, 4 specialized agents work in parallel — each an expert in its domain.</p>
+      <div class="agents-grid">
+        <div class="agent-card" data-agent="1">
+          <div class="agent-icon">📋</div>
+          <h3>Summary Agent</h3>
+          <p>Reads the full transcript and distills the 5 most important decisions, risks, and outcomes into a crisp executive summary.</p>
+        </div>
+        <div class="agent-card" data-agent="2">
+          <div class="agent-icon">🎯</div>
+          <h3>Ticket Generator</h3>
+          <p>Extracts every action item and feature request. Classifies each by priority, issue type, assignee, and due date using our classification engine.</p>
+        </div>
+        <div class="agent-card" data-agent="3">
+          <div class="agent-icon">📄</div>
+          <h3>PRD Writer</h3>
+          <p>Identifies the most important feature discussed and drafts a full Product Requirements Document with user stories and success metrics.</p>
+        </div>
+        <div class="agent-card" data-agent="4">
+          <div class="agent-icon">💬</div>
+          <h3>Slack Agent</h3>
+          <p>Writes the #product-updates Slack message so you never have to. Concise, emoji-rich, and ready to paste.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo Section -->
+  <section class="demo-section" id="demo">
+    <div class="container">
+      <h2 class="section-title">Try It Live</h2>
+      <p class="section-sub">Paste a real meeting transcript below and watch all 4 agents run simultaneously.</p>
+
+      <div class="demo-layout">
+        <!-- Left: Input -->
+        <div class="input-panel glass-panel">
+          <div class="panel-header">
+            <span class="panel-title">📝 Meeting Transcript</span>
+            <button class="btn-load-sample" id="loadSample">Load Sample →</button>
+          </div>
+          <textarea
+            id="transcriptInput"
+            class="transcript-input"
+            placeholder="Paste your meeting transcript here... Or click 'Load Sample' to see a demo."
+            rows="14"
+          ></textarea>
+          <div class="input-footer">
+            <div class="optional-jira">
+              <label style="display:flex;align-items:center;gap:0.5rem;">Jira Project Key <span style="background:rgba(16,185,129,0.15);color:#10b981;font-size:0.65rem;padding:0.1rem 0.5rem;border-radius:1rem;border:1px solid rgba(16,185,129,0.3);">● LIVE DEMO BOARD</span></label>
+              <div style="display:flex;gap:0.5rem;align-items:center;">
+                <input type="text" id="jiraKey" value="FLOWY" placeholder="e.g. PROJ" class="jira-input" />
+                <button class="btn-load-sample" id="validateJiraBtn" style="white-space:nowrap;padding:0.6rem 0.8rem;">Validate</button>
+              </div>
+              <span id="jiraValidationMsg" style="font-size:0.75rem;margin-top:0.4rem;display:block;"></span>
+            </div>
+            <div class="optional-jira" style="margin-top:0.75rem;">
+              <label style="display:flex;align-items:center;gap:0.4rem;"><span style="background:#4A154B;border-radius:50%;width:16px;height:16px;display:inline-flex;align-items:center;justify-content:center;font-size:9px;">✈</span> Slack Webhook URL (optional)</label>
+              <input type="text" id="slackWebhookInput" placeholder="https://hooks.slack.com/services/..." class="jira-input" style="width:100%;margin-top:0.3rem;" />
+              <span style="font-size:0.7rem;opacity:0.5;margin-top:0.2rem;display:block;">Paste your Slack Incoming Webhook to enable 1-click posting</span>
+            </div>
+            <button class="process-btn" id="processBtn">
+              <span class="btn-icon">⚡</span>
+              <span class="btn-text">Process with Flowy</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Live Processing Log -->
+        <div class="log-panel glass-panel" id="logPanel" style="display:none;">
+          <div class="panel-header">
+            <span class="panel-title">🤖 Live Agent Execution</span>
+            <span class="live-badge">LIVE</span>
+          </div>
+          <div class="log-steps" id="logSteps"></div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div class="results-grid" id="resultsGrid" style="display:none;">
+        <!-- Summary Card -->
+        <div class="result-card glass-panel" id="summaryCard">
+          <div class="card-header">
+            <span class="card-icon">📋</span>
+            <span class="card-title">Meeting Summary</span>
+            <button class="copy-btn" data-target="summaryContent">Copy</button>
+          </div>
+          <div class="card-content" id="summaryContent"></div>
+        </div>
+
+        <!-- Slack Card -->
+        <div class="result-card glass-panel" id="slackCard">
+          <div class="card-header">
+            <span class="card-icon">💬</span>
+            <span class="card-title">Slack Update</span>
+            <button class="copy-btn" data-target="slackContent">Copy</button>
+          </div>
+          <div class="card-content" id="slackContent"></div>
+        </div>
+
+        <!-- PRD Card -->
+        <div class="result-card result-card-wide glass-panel" id="prdCard">
+          <div class="card-header">
+            <span class="card-icon">📄</span>
+            <span class="card-title">Product Requirements Document</span>
+            <button class="copy-btn" data-target="prdContent">Copy</button>
+          </div>
+          <div class="card-content" id="prdContent"></div>
+        </div>
+
+        <!-- Tickets Card -->
+        <div class="result-card result-card-full glass-panel" id="ticketsCard">
+          <div class="card-header">
+            <span class="card-icon">🎯</span>
+            <span class="card-title">Jira Tickets Generated</span>
+            <span class="ticket-count" id="ticketCount">0 tickets</span>
+          </div>
+          <div id="jiraErrorBanner" style="display:none;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.3);padding:0.75rem 1.5rem;font-size:0.85rem;"></div>
+          <div class="tickets-table-wrap">
+            <table class="tickets-table" id="ticketsTable">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Summary</th>
+                  <th>Type</th>
+                  <th>Priority</th>
+                  <th>Assignee</th>
+                  <th>Due Date</th>
+                  <th>Labels</th>
+                </tr>
+              </thead>
+              <tbody id="ticketsBody"></tbody>
+            </table>
+          </div>
+          <div class="jira-links" id="jiraLinks" style="display:none;"></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-inner">
+      <div class="footer-logo">
+        <span class="logo-icon">⚡</span>
+        <span>Flowy</span>
+      </div>
+      <p class="footer-tagline">Built at VibeCon 2026 · "Cursor, but for Product Managers"</p>
+      <p class="footer-sub">YC Request for Startups — AI-Native Workflows · $50B Market</p>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
