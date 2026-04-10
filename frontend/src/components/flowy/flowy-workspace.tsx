@@ -107,10 +107,10 @@ export function FlowyWorkspace() {
       
       {/* Left Pane: Input */}
       <div className="flex flex-col h-full space-y-4 min-h-0">
-        <h2 className="text-xl font-bold flex items-center gap-2 font-inter">
+        <h2 className="text-xl font-bold flex items-center gap-2">
           Flowy AI Input
         </h2>
-        <Card className="flex flex-col flex-grow border shadow-sm min-h-0 overflow-hidden font-inter">
+        <Card className="flex flex-col flex-grow border shadow-sm min-h-0 overflow-hidden">
           <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between shrink-0">
              <CardTitle className="text-sm font-medium">Meeting Transcript</CardTitle>
              <button
@@ -158,7 +158,7 @@ export function FlowyWorkspace() {
       </div>
 
       {/* Right Pane: Logs / Output */}
-      <div className="flex flex-col h-full space-y-4 min-h-0 font-inter">
+      <div className="flex flex-col h-full space-y-4 min-h-0">
         <h2 className="text-xl font-bold flex items-center gap-2">
           Magic Output
         </h2>
