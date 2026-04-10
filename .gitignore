@@ -2,6 +2,12 @@
 # Flowy — Root .gitignore
 # ──────────────────────────────────────────────
 
+# Cloned reference repos — not part of this project
+repo1-meeting-jira/
+repo2-multiagent-secretary/
+repo3-icemark-prd/
+repo4-meeting-pipeline/
+
 # NEVER commit secrets
 .env
 .env.local
