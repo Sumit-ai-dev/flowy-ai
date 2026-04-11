@@ -5,6 +5,17 @@
 
 ---
 
+## 🚀 NEW: Flowy v2.0 — The Reflection Update
+
+We've evolved Flowy from a static generator into a **living, collaborative workspace**. v2.0 introduces deep iteration capabilities:
+
+- **🔄 AI Reflection Agent** — Don't just generate; iterate. Chat with a world-class PM sidekick to refine your PRDs and Summaries in real-time.
+- **🕰️ Interactive Time Travel** — A revolutionary versioning system. Every AI edit is captured as a "Snapshot." Click any snapshot in the chat history to instantly restore your document to that exact historical point.
+- **✨ Premium Glassmorphism UI** — A high-fidelity, translucent design system optimized for deep focus and executive-level output.
+- **🌲 Evolutionary History** — Your chat thread serves as a visual timeline of your document's evolution, ensuring no idea is ever lost.
+
+---
+
 ## Overview
 
 Flowy transforms messy meeting transcripts into production-ready product artifacts in under 10 seconds using a parallelized multi-agent AI pipeline. Paste a raw meeting transcript and Flowy automatically generates:
@@ -34,12 +45,16 @@ Agent     Generator     (Deep Model)      Agent
   └────────┬─────────────────────────────────┘
            │
            v
-    Result Aggregator  ->  Jira Push  ->  FlowOutput
+     Result Aggregator  ->  Jira Push  ->  FlowOutput
+           │
+           └────>  REFLECTION AGENT  <────┐
+                   (Human-in-the-loop)    │
+                   (Time Travel / History)┘
 ```
 
 **Multi-model routing:**
-- Fast tasks (Summary, Slack) — `gemini-2.0-flash` or `gpt-4o-mini`
-- Deep tasks (PRD, Tickets) — `gemini-2.0-flash (precision)` or `gpt-4o`
+- Fast tasks (Summary, Slack) — `gemini-2.0-flash`
+- Deep tasks (PRD, Tickets, Reflection) — `gemini-2.0-flash (precision)` or `gpt-4o`
 
 All four agents execute concurrently via `asyncio.gather`, significantly reducing end-to-end latency.
 
