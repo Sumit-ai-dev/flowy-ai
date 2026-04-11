@@ -88,3 +88,32 @@ export async function transcribeAudio(
 
   return response.json();
 }
+
+export async function chatWithFlowy(
+  userMessage: string, 
+  history: any[], 
+  transcript: string, 
+  currentContent: string, 
+  mode: 'summary' | 'prd'
+): Promise<{ response: string; updated_content: string | null }> {
+  const response = await fetch('http://localhost:8000/chat', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      user_message: userMessage,
+      history,
+      transcript,
+      current_content: currentContent,
+      mode
+    })
+  });
+
+  if (!response.ok) {
+    const errObj = await response.json().catch(() => ({}));
+    throw new Error(errObj.detail || 'Chat interaction failed');
+  }
+
+  return response.json();
+}

@@ -7,6 +7,7 @@ import {
   IconBold,
   IconBox,
   IconBrandGithub,
+  IconBrandSlack,
   IconBrandTwitter,
   IconBrightness,
   IconCalendar,
@@ -43,6 +44,7 @@ import {
   IconFolder,
   IconGripVertical,
   IconHelpCircle,
+  IconHistory,
   IconInfoCircle,
   IconItalic,
   IconLayoutDashboard,
@@ -114,6 +116,7 @@ export const Icons = {
   search: IconSearch,
   settings: IconSettings,
   trash: IconTrash,
+  history: IconHistory,
 
   // Navigation / Chevrons
   chevronDown: IconChevronDown,
@@ -142,6 +145,7 @@ export const Icons = {
 
   // Brand
   github: IconBrandGithub,
+  slack: IconBrandSlack,
   twitter: IconBrandTwitter,
   logo: IconCommand,
 

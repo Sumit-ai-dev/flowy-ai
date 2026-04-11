@@ -27,15 +27,16 @@ Multi-model routing:
 
 from __future__ import annotations
 import os, json, asyncio
-from typing import Optional, List, TypedDict, Annotated
+from typing import Optional, List, TypedDict, Annotated, Dict, Any
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
-import requests
-from openai import OpenAI
+import sqlite3
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 import tempfile
+import requests
 
 load_dotenv()
 
@@ -79,6 +80,10 @@ def get_model_names() -> dict:
         return {"fast": "gemini-2.0-flash", "smart": "gemini-2.0-flash (precision mode)"}
     return {"fast": "gpt-4o-mini", "smart": "gpt-4o"}
 
+# Instantiate global LLMs
+fast_llm = get_fast_llm()
+smart_llm = get_smart_llm()
+
 # ─────────────────────────────────────────────
 # PYDANTIC SCHEMAS
 # ─────────────────────────────────────────────
@@ -99,6 +104,13 @@ class JiraTicketOut(BaseModel):
     labels: List[str]
     jira_key: Optional[str] = None
     jira_url: Optional[str] = None
+
+class ChatRequest(BaseModel):
+    transcript: str
+    current_content: str
+    user_message: str
+    history: List[Dict[str, str]] # List of {"role": "...", "content": "..."}
+    mode: str # "summary" or "prd"
 
 class FlowOutput(BaseModel):
     meeting_summary: str
@@ -590,6 +602,67 @@ def root():
         "architecture": "Supervisor + 4 Parallel Specialized Agents",
         "models": models,
     }
+
+@app.post("/chat")
+async def chat_refine(req: ChatRequest):
+    if not req.user_message:
+        raise HTTPException(status_code=400, detail="Empty message.")
+    
+    try:
+        # Construct the context-aware prompt
+        system_prompt = (
+            f"You are the 'Flowy Reflection Agent', a proactive and elite Product Manager Architect.\n"
+            f"Your goal is to Refine the {req.mode} based on the PM's feedback.\n\n"
+            f"STRICT FORMATTING RULES:\n"
+            f"1. Conversational Reply: Your response should be brief, professional, and action-oriented. "
+            f"   DO NOT use markdown symbols like '**', '###', '---'. Use plain text only.\n"
+            f"2. Document Update: ALWAYS rewrite the document if an instruction is given. "
+            f"   Put the FULL updated content inside ONE markdown block: ```markdown [content] ```.\n\n"
+            f"CONTEXT:\n"
+            f"1. Transcript: {req.transcript[:4000]}\n"
+            f"2. Current {req.mode}: {req.current_content}\n"
+            f"3. Conversation History: You MUST maintain continuity. Acknowledge and build upon previous changes made in this session.\n\n"
+            f"INSTRUCTIONS:\n"
+            f"- DO NOT ask for permission (e.g. 'Should I proceed?'). Implement changes IMMEDIATELY.\n"
+            f"- Focus on technical depth, edge cases, and high-quality PM standards.\n"
+            f"- Be concise. Conversational part should be max 1-2 sentences."
+        )
+
+        messages = [SystemMessage(content=system_prompt)]
+        # Add history (clipping to last 10 to save tokens)
+        for msg in req.history[-10:]:
+            if msg["role"] == "user":
+                messages.append(HumanMessage(content=msg["content"]))
+            else:
+                messages.append(AIMessage(content=msg["content"]))
+        
+        # Add latest user message
+        messages.append(HumanMessage(content=req.user_message))
+
+        response = (await smart_llm.ainvoke(messages)).content
+        
+        # Extract rewritten content if present
+        new_content = None
+        if "```markdown" in response:
+            parts = response.split("```markdown")
+            if len(parts) > 1:
+                new_content = parts[1].split("```")[0].strip()
+        elif "```" in response: # fallback
+             parts = response.split("```")
+             if len(parts) > 1:
+                new_content = parts[1].strip()
+        
+        # ULTIMATE FALLBACK: If the response is long and looks like a doc rewrite, use it
+        if not new_content and len(response) > 500 and ("meeting" in response.lower() or "summary" in response.lower()):
+            new_content = response.strip()
+
+        return {
+            "response": response,
+            "updated_content": new_content
+        }
+    except Exception as e:
+        print(f"Chat Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/process", response_model=FlowOutput)
 async def process_transcript(req: ProcessRequest):
