@@ -1,18 +1,18 @@
 # Flowy — AI Chief of Staff for Product Managers
 
 > **Built at VibeCon Hackathon 2026 | YC Request for Startups Track**
-> *"Cursor, but for Product Managers"*
+> *"The Multi-Model Orchestration Engine for Product Teams"*
 
 ---
 
-## 🚀 NEW: Flowy v2.0 — The Reflection Update
+## 🚀 Flowy v2.0 — The "Stateful Reflection" Update
 
-We've evolved Flowy from a static generator into a **living, collaborative workspace**. v2.0 introduces deep iteration capabilities:
+We've evolved Flowy from a simple pipeline into a **Cognitive Orchestration Layer**. v2.0 leverages high-density AI patterns:
 
-- **🔄 AI Reflection Agent** — Don't just generate; iterate. Chat with a world-class PM sidekick to refine your PRDs and Summaries in real-time.
-- **🕰️ Interactive Time Travel** — A revolutionary versioning system. Every AI edit is captured as a "Snapshot." Click any snapshot in the chat history to instantly restore your document to that exact historical point.
-- **✨ Premium Glassmorphism UI** — A high-fidelity, translucent design system optimized for deep focus and executive-level output.
-- **🌲 Evolutionary History** — Your chat thread serves as a visual timeline of your document's evolution, ensuring no idea is ever lost.
+- **🔄 Multi-Model Agent Orchestration** — Dynamic routing and load balancing between specialized models (Gemini 2.0 / GPT-4o) based on task complexity.
+- **🕰️ Deterministic Time Travel** — A rigorous state-restoration engine. Every AI interaction is a node in an **Evolutionary Memory Graph**, allowing for pixel-perfect document rollback.
+- **✨ High-Fidelity Glassmorphism UI** — A GPU-accelerated, translucent design system implementing modern **Aesthetics-as-a-Service**.
+- **🧠 Human-in-the-Loop (HITL) Reflection** — Real-time conversational refinement with a "Tech Lead" persona, optimizing for zero-shot accuracy.
 
 ---
 
@@ -27,34 +27,34 @@ Flowy transforms messy meeting transcripts into production-ready product artifac
 
 ---
 
-## Architecture
+## Architecture: Multi-Model Agentic Design
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│               SUPERVISOR AGENT                      │
-│  Reads transcript -> extracts context & intent      │
+│          COGNITIVE SUPERVISOR AGENT                 │
+│  Context parsing & Asynchronous Dispatch Logic      │
 └──────────┬──────────────────────────────────────────┘
-           │  dispatches in PARALLEL to:
+           │  Asynchronous Parallel Inference (Gather)
   ┌────────┴─────────────────────────────────┐
   │         │              │                 │
   v         v              v                 v
-Summary   Ticket        PRD Writer        Slack
-Agent     Generator     (Deep Model)      Agent
-(Fast)    (Deep Model)                    (Fast)
+Summary   Jira          PRD Architect     Slack
+Agent     Generator     (High-Density)    Bridge
+(Flash)   (Deep Spec)                     (Edge)
   │         │              │                 │
   └────────┬─────────────────────────────────┘
            │
            v
-     Result Aggregator  ->  Jira Push  ->  FlowOutput
+     Result Aggregator  ->  Jira Push  ->  State Sync
            │
-           └────>  REFLECTION AGENT  <────┐
-                   (Human-in-the-loop)    │
-                   (Time Travel / History)┘
+           └────>  REFLECTION AGENT (HITL) <───┐
+                   (Stateful Memory Graph)     │
+                   (Time Travel restoration)   ┘
 ```
 
-**Multi-model routing:**
-- Fast tasks (Summary, Slack) — `gemini-2.0-flash`
-- Deep tasks (PRD, Tickets, Reflection) — `gemini-2.0-flash (precision)` or `gpt-4o`
+**Adaptive Model Routing:**
+- High-Throughput Tiers (Summary, Slack) — `gemini-2.0-flash`
+- High-Reasoning Tiers (PRD, Jira, Reflection) — `gemini-2.0-flash (precision)` or `gpt-4o`
 
 All four agents execute concurrently via `asyncio.gather`, significantly reducing end-to-end latency.
 
@@ -172,14 +172,15 @@ SLACK_WEBHOOK_URL=https://hooks.slack.com/services/...
 
 ---
 
-## Key Features
+## Technical Key Features
 
-- **Parallel Multi-Agent Pipeline** — 4 specialized AI agents run concurrently for fast results
-- **Intelligent Model Routing** — Fast models for summaries, deep models for PRDs and tickets
-- **Live Jira Integration** — Auto-classifies issue type, priority, assignee, and due date; pushes directly to your Jira board
-- **Slack Block Kit** — Rich, professionally formatted notifications with markdown-to-mrkdwn conversion
-- **Real-Time Agent Logs** — Watch each agent execute live in the terminal-style log viewer
-- **Context Sharing** — Supervisor context flows to all agents; Summary context feeds into PRD generation
+- **🚀 Asynchronous Parallel Inference Pipeline** — Leveraging Python `asyncio.gather` for non-blocking multi-model execution.
+- **🤖 HITL Reflection Layer** — A recursive feedback loop that allows the user to act as the final decision gate in the spec generation process.
+- **🕰️ Stateful Evolutionary Memory** — A persistent state tree that captures every artifact version, enabling deterministic document restoration.
+- **📡 Schema-Compliant Integrations** — Deep-link injection into Jira and Slack with automated metadata mapping.
+- **💎 Low-Latency State Synchronization** — Zero-delay UI updates between the Reflection Agent and the Document Viewer.
+- **📜 Semantic Traceability** — Full visibility into the "Agent Thought Process" via real-time processing logs.
+- **🔗 Contextual Flow** — Supervisor context flows to all agents; Summary context feeds into PRD generation
 
 ---
 
