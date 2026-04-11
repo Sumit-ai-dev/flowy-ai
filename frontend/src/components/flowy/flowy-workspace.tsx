@@ -197,14 +197,19 @@ export function FlowyWorkspace() {
           interimTranscript += result[0].transcript;
         }
       }
+      // UPDATE: Push both final and interim text to the UI for "Instant" feel
       setTranscript(finalTranscript + interimTranscript);
     };
 
     recognition.onend = () => {
+      // If we are still in a recording state, auto-restart the engine
+      // This solves the "text not showing" issue caused by native timeouts
       if (isRecording || isFullCapturing) {
         try {
           recognition.start();
-        } catch (e) {}
+        } catch (e) {
+          // Already started or busy
+        }
       } else {
         setIsRecording(false);
         if (recordingTimerRef.current) {
@@ -216,8 +221,9 @@ export function FlowyWorkspace() {
     };
 
     recognition.onerror = (event: { error: string }) => {
-      console.error('Speech recognition error:', event.error);
+      // Ignore 'no-speech' and 'aborted' - they are common and shouldn't interrupt the user
       if (event.error !== 'aborted' && event.error !== 'no-speech') {
+        console.error('Speech recognition error:', event.error);
         toast.error(`Microphone error: ${event.error}`);
         setIsRecording(false);
       }
@@ -234,6 +240,7 @@ export function FlowyWorkspace() {
 
     toast.success('Recording started. Speak naturally.');
   }, [isSpeechSupported, transcript]);
+
 
   const startFullCapture = async () => {
     try {
@@ -256,7 +263,7 @@ export function FlowyWorkspace() {
       await audioCtx.resume();
       fullCaptureContextRef.current = audioCtx;
       
-      const destination = audioCtx.createMediaStreamDestination();
+      const mixedDestination = audioCtx.createMediaStreamDestination();
       const systemGain = audioCtx.createGain();
       const micGain = audioCtx.createGain();
       systemGain.gain.value = 1.2;
@@ -266,14 +273,21 @@ export function FlowyWorkspace() {
       const micSource = audioCtx.createMediaStreamSource(micStream);
       
       displaySource.connect(systemGain);
-      systemGain.connect(destination);
+      systemGain.connect(mixedDestination);
       micSource.connect(micGain);
-      micGain.connect(destination);
+      micGain.connect(mixedDestination);
       
       fullCaptureStreamsRef.current = [displayStream, micStream];
 
-      const recorder = new MediaRecorder(destination.stream, { 
-        mimeType: 'audio/webm;codecs=opus',
+      // Codec fallback for cross-browser compatibility
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : '';
+
+      const recorder = new MediaRecorder(mixedDestination.stream, { 
+        ...(mimeType ? { mimeType } : {}),
         audioBitsPerSecond: 128000
       });
       mediaRecorderRef.current = recorder;
@@ -299,12 +313,20 @@ export function FlowyWorkspace() {
         } catch (e) { console.error("Cleanup error", e); }
         
         const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        console.log(`[TrueCapture] chunks=${audioChunksRef.current.length}, size=${audioBlob.size}bytes`);
+        
+        if (audioChunksRef.current.length === 0 || audioBlob.size < 500) {
+          toast.error('No audio captured. Please check "Share Audio" in the screen share popup.');
+          return;
+        }
+
         setIsLoading(true);
         setOutput(null);
         setAgentLogs(['Merging dual-channel audio...', 'Connecting to Whisper engine...', 'Transcribing with diarization...']);
         
         try {
           const result = await transcribeAudio(audioBlob, jiraKey.trim() || undefined, destination);
+          console.log('[TrueCapture] Whisper result:', result);
           setOutput(result);
           if (result.processing_steps) setAgentLogs(result.processing_steps);
           if (result.raw_transcript) setTranscript(result.raw_transcript);
@@ -320,6 +342,8 @@ export function FlowyWorkspace() {
       setIsFullCapturing(true);
       setRecordingDuration(0);
       recordingTimerRef.current = setInterval(() => { setRecordingDuration(prev => prev + 1); }, 1000);
+      // Start live speech preview alongside the recording
+      // Whisper will replace this with the accurate final transcript on stop
       if (isSpeechSupported) startRecording();
       toast.success('True Capture Active: Sharing meeting audio + your mic.');
     } catch (err: any) {

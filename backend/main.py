@@ -37,6 +37,7 @@ import sqlite3
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 import tempfile
 import requests
+from openai import OpenAI
 
 load_dotenv()
 
