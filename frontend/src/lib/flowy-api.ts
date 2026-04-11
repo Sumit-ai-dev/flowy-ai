@@ -21,11 +21,13 @@ export type FlowOutput = {
   jira_links: string[];
   processing_steps: string[];
   jira_error?: string;
+  raw_transcript?: string;
 };
 
 export async function processTranscript(
   transcript: string,
-  jira_project_key?: string
+  jira_project_key?: string,
+  destination: string = 'jira'
 ): Promise<FlowOutput> {
   const response = await fetch('http://localhost:8000/process', {
     method: 'POST',
@@ -34,7 +36,8 @@ export async function processTranscript(
     },
     body: JSON.stringify({
       transcript,
-      jira_project_key
+      jira_project_key,
+      destination
     })
   });
 
@@ -58,6 +61,29 @@ export async function sendSlackMessage(message: string): Promise<{ status: strin
   if (!response.ok) {
     const errObj = await response.json().catch(() => ({}));
     throw new Error(errObj.detail || 'Failed to dispatch Slack message');
+  }
+
+  return response.json();
+}
+
+export async function transcribeAudio(
+  audioBlob: Blob,
+  jira_project_key?: string,
+  destination: string = 'jira'
+): Promise<FlowOutput> {
+  const formData = new FormData();
+  formData.append('file', audioBlob, 'recording.webm');
+  if (jira_project_key) formData.append('jira_project_key', jira_project_key);
+  formData.append('destination', destination);
+
+  const response = await fetch('http://localhost:8000/transcribe', {
+    method: 'POST',
+    body: formData
+  });
+
+  if (!response.ok) {
+    const errObj = await response.json().catch(() => ({}));
+    throw new Error(errObj.detail || 'Failed to transcribe audio with backend');
   }
 
   return response.json();

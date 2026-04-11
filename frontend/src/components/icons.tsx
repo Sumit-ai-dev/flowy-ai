@@ -53,6 +53,8 @@ import {
   IconLogin,
   IconLogout,
   IconMessage,
+  IconMicrophone,
+  IconMicrophoneOff,
   IconMinus,
   IconMoon,
   IconMusic,
@@ -136,6 +138,7 @@ export const Icons = {
   employee: IconUserX,
   userPen: IconUserEdit,
   teams: IconUsers,
+  monitor: IconDeviceLaptop,
 
   // Brand
   github: IconBrandGithub,
@@ -149,6 +152,8 @@ export const Icons = {
   video: IconVideo,
   send: IconSend,
   paperclip: IconPaperclip,
+  mic: IconMicrophone,
+  micOff: IconMicrophoneOff,
 
   // Files
   page: IconFile,

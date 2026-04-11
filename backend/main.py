@@ -29,11 +29,13 @@ from __future__ import annotations
 import os, json, asyncio
 from typing import Optional, List, TypedDict, Annotated
 from datetime import datetime, timedelta
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 import requests
+from openai import OpenAI
+import tempfile
 
 load_dotenv()
 
@@ -84,6 +86,7 @@ def get_model_names() -> dict:
 class ProcessRequest(BaseModel):
     transcript: str
     jira_project_key: Optional[str] = None
+    destination: str = "jira"  # Supporting jira, linear, asana
 
 class JiraTicketOut(BaseModel):
     ticket_id: str
@@ -133,13 +136,20 @@ class FlowyState(TypedDict):
 # ─────────────────────────────────────────────
 
 SUPERVISOR_PROMPT = """You are the Flowy Orchestrator Agent.
-Your job is to read a meeting transcript and output a structured context summary that will be passed to 4 specialized sub-agents.
+Your job is to read a meeting transcript and output a structured context summary that will be passed to 4 specialized sub-agents. 
+
+IMPORTANT: Perform SEMANTIC DIARIZATION. Even if the transcript is a raw wall of text, use context clues (names mentioned, "I will", "You handle") to identify the stakeholders.
 
 Extract and return EXACTLY this JSON:
 {{
   "meeting_type": "sprint_planning | retrospective | design_review | incident | general",
   "team_focus": "one-sentence description of what the team is working on",
-  "key_people": ["list", "of", "names", "mentioned"],
+  "participants": [
+    {{ "name": "Name", "role": "e.g. Developer, PM", "is_organizer": true/false }}
+  ],
+  "speaker_mapping": {{
+    "SpeakerName": "description of their main contributions or commitments in this meeting"
+  }},
   "top_priority": "the single most critical decision or action from this meeting",
   "tone": "urgent | relaxed | technical | strategic"
 }}
@@ -587,10 +597,68 @@ async def process_transcript(req: ProcessRequest):
         raise HTTPException(status_code=400, detail="Transcript too short.")
     try:
         return await run_flowy_pipeline(req.transcript, req.jira_project_key)
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Pipeline error: {str(e)}")
+        print(f"Slack Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ─────────────────────────────────────────────
+# TRUE CAPTURE: WHISPER TRANSCRIPTION
+# ─────────────────────────────────────────────
+
+@app.post("/transcribe")
+async def transcribe_meeting(
+    file: UploadFile = File(...),
+    jira_project_key: Optional[str] = Form(None),
+    destination: str = Form("jira")
+):
+    """
+    Handles high-fidelity audio transcription using OpenAI Whisper.
+    This solves the 'Universal Capture' problem by processing the mixed 
+    Mic + System audio stream.
+    """
+    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    
+    # 1. Save temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp_path = tmp.name
+
+    try:
+        # 2. Transcribe using Whisper-1
+        with open(tmp_path, "rb") as audio_file:
+            transcript_response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+        
+        # Cleanup
+        os.remove(tmp_path)
+
+        # 3. Process the resulting transcript through the agent pipeline
+        print(f"--- TRUE CAPTURE TRANSCRIPT ---\n{transcript_response}\n--- END ---")
+        process_req = ProcessRequest(
+            transcript=transcript_response,
+            jira_project_key=jira_project_key,
+            destination=destination
+        )
+        
+        result = await process_transcript(process_req)
+        
+        # 4. Return both processed and raw data
+        return {
+            **result.dict(),
+            "raw_transcript": transcript_response
+        }
+
+    except Exception as e:
+        if os.path.exists(tmp_path):
+            os.remove(tmp_path)
+        print(f"Transcription Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+# ─────────────────────────────────────────────
 
 @app.get("/jira/validate", response_model=JiraValidationResult)
 def jira_validate(project_key: Optional[str] = None):
