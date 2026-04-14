@@ -12,7 +12,9 @@
   }
   body {
     @apply bg-background text-foreground;
+    scroll-behavior: smooth;
   }
+
 
   /* Global scrollbar styling to match ScrollArea */
   * {
@@ -74,4 +76,21 @@
 ::view-transition-new(root) {
   /* Apply the reveal animation */
   animation: reveal 0.4s ease-in-out forwards;
+}
+
+/* ── Premium Custom Animations ── */
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+
+@keyframes aurora {
+  0%, 100% { opacity: 0.4; transform: scale(1) translate(0, 0); }
+  33%       { opacity: 0.6; transform: scale(1.1) translate(2%, 3%); }
+  66%       { opacity: 0.35; transform: scale(0.9) translate(-2%, -2%); }
 }
