@@ -129,7 +129,7 @@ export const navGroups: NavGroup[] = [
   },
   {
     label: '',
-    items: [,
+    items: [
       {
         title: 'Account',
         url: '#',
