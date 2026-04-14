@@ -3,14 +3,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { processTranscript, sendSlackMessage, transcribeAudio, chatWithFlowy, FlowOutput } from '@/lib/flowy-api';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Icons } from '@/components/icons';
-import { Textarea } from '@/components/ui/textarea';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
+import { Waves, Mic, Radio, FileText, Kanban, Send, Slack, TerminalSquare, Clock, Plus, ChevronRight, ChevronLeft, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 
+// ─── Sample transcript ────────────────────────────────────────────────────────
 const SAMPLE_TRANSCRIPT = `Alright everyone, let's kick things off. Today's sprint planning call — main agenda: shipping the v2 dashboard before end of month.
 
 First up, Emma — the onboarding flow has a critical bug. New users get stuck on the email verification screen and never make it to setup. This is a blocker, we need this fixed today. High priority.
@@ -25,67 +24,82 @@ Finally, let's make sure we push sprint updates to the #product-updates Slack ch
 
 Key decisions: Launch date stays end of month. All blockers must be cleared by Wednesday. Next sync Thursday 4pm.`;
 
-// Destination platform configuration
+// ─── Constants ────────────────────────────────────────────────────────────────
 const DESTINATIONS = [
-  { id: 'jira', name: 'Jira', status: 'connected', color: 'text-blue-500', bg: 'bg-blue-500/10' },
-  { id: 'linear', name: 'Linear', status: 'coming_soon', color: 'text-violet-500', bg: 'bg-violet-500/10' },
-  { id: 'asana', name: 'Asana', status: 'coming_soon', color: 'text-rose-500', bg: 'bg-rose-500/10' },
+  { id: 'jira',   name: 'Jira',   status: 'connected',   dot: 'bg-blue-500' },
+  { id: 'linear', name: 'Linear', status: 'coming_soon', dot: 'bg-violet-500' },
+  { id: 'asana',  name: 'Asana',  status: 'coming_soon', dot: 'bg-rose-500' },
 ] as const;
 
-// Web Speech API type declarations
-interface SpeechRecognitionEvent {
-  resultIndex: number;
-  results: SpeechRecognitionResultList;
+// ─── Web Speech API types ─────────────────────────────────────────────────────
+interface SpeechRecognitionEvent { resultIndex: number; results: SpeechRecognitionResultList; }
+interface SpeechRecognitionResultList { length: number; item(index: number): SpeechRecognitionResult; [index: number]: SpeechRecognitionResult; }
+interface SpeechRecognitionResult { isFinal: boolean; length: number; item(index: number): SpeechRecognitionAlternative; [index: number]: SpeechRecognitionAlternative; }
+interface SpeechRecognitionAlternative { transcript: string; confidence: number; }
+interface SpeechRecognition extends EventTarget { continuous: boolean; interimResults: boolean; lang: string; start(): void; stop(): void; abort(): void; onresult: ((event: SpeechRecognitionEvent) => void) | null; onend: (() => void) | null; onerror: ((event: { error: string }) => void) | null; }
+declare global { interface Window { SpeechRecognition: new () => SpeechRecognition; webkitSpeechRecognition: new () => SpeechRecognition; } }
+
+// ─── Module Header component ──────────────────────────────────────────────────
+function ModuleHeader({ index, title, badge }: { index: string; title: string; badge?: string }) {
+  return (
+    <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center gap-4">
+        <span className="text-[10px] font-mono text-white/20 font-black tracking-[0.3em]">[{index}]</span>
+        <h3 className="text-xs font-black text-white/50 uppercase tracking-[0.2em]">{title}</h3>
+      </div>
+      {badge && (
+        <span className="text-[10px] font-mono text-emerald-500 border border-emerald-500/30 px-2 py-0.5 rounded-full">{badge}</span>
+      )}
+    </div>
+  );
 }
 
-interface SpeechRecognitionResultList {
-  length: number;
-  item(index: number): SpeechRecognitionResult;
-  [index: number]: SpeechRecognitionResult;
+// ─── Inline Reflection Bar ────────────────────────────────────────────────────
+function ReflectionBar({ onSend, isLoading, placeholder }: { onSend: (v: string) => void; isLoading: boolean; placeholder: string }) {
+  const [val, setVal] = useState('');
+  return (
+    <div className="mt-6 flex items-center gap-2 border border-white/8 rounded-xl px-4 py-2.5 bg-white/[0.02] focus-within:border-white/20 transition-colors">
+      <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest whitespace-nowrap">Refine →</span>
+      <input
+        className="flex-1 bg-transparent text-sm text-white placeholder:text-white/20 outline-none font-medium"
+        placeholder={placeholder}
+        value={val}
+        onChange={e => setVal(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter' && val.trim()) { onSend(val); setVal(''); } }}
+        disabled={isLoading}
+      />
+      <button
+        onClick={() => { if (val.trim()) { onSend(val); setVal(''); } }}
+        disabled={isLoading || !val.trim()}
+        className="text-white/30 hover:text-white disabled:opacity-20 transition-colors"
+      >
+        {isLoading ? <Icons.spinner className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+      </button>
+    </div>
+  );
 }
 
-interface SpeechRecognitionResult {
-  isFinal: boolean;
-  length: number;
-  item(index: number): SpeechRecognitionAlternative;
-  [index: number]: SpeechRecognitionAlternative;
-}
+// ─── Priority badge ───────────────────────────────────────────────────────────
+const PRIORITY_STYLE: Record<string, string> = {
+  High:   'border-red-500/40 text-red-400',
+  Medium: 'border-amber-500/40 text-amber-400',
+  Low:    'border-white/10 text-white/40',
+};
 
-interface SpeechRecognitionAlternative {
-  transcript: string;
-  confidence: number;
-}
-
-interface SpeechRecognition extends EventTarget {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  abort(): void;
-  onresult: ((event: SpeechRecognitionEvent) => void) | null;
-  onend: (() => void) | null;
-  onerror: ((event: { error: string }) => void) | null;
-}
-
-declare global {
-  interface Window {
-    SpeechRecognition: new () => SpeechRecognition;
-    webkitSpeechRecognition: new () => SpeechRecognition;
-  }
-}
-
+// ─── Main component ───────────────────────────────────────────────────────────
 export function FlowyWorkspace() {
+  // ── Core State ──
   const [transcript, setTranscript] = useState('');
   const [jiraKey, setJiraKey] = useState('FLOWY');
   const [isLoading, setIsLoading] = useState(false);
   const [output, setOutput] = useState<FlowOutput | null>(null);
   const [isSlackSending, setIsSlackSending] = useState(false);
-  const [activeStep, setActiveStep] = useState(0);
   const [destination, setDestination] = useState('jira');
   const [showDestDropdown, setShowDestDropdown] = useState(false);
+  const [navCollapsed, setNavCollapsed] = useState(false);
+  const [pipelineMs, setPipelineMs] = useState<number | null>(null);
 
-  // Speech recognition state
+  // ── Speech ──
   const [isRecording, setIsRecording] = useState(false);
   const [isFullCapturing, setIsFullCapturing] = useState(false);
   const [recordingDuration, setRecordingDuration] = useState(0);
@@ -97,62 +111,29 @@ export function FlowyWorkspace() {
   const fullCaptureStreamsRef = useRef<MediaStream[]>([]);
   const [previewStream, setPreviewStream] = useState<MediaStream | null>(null);
 
-  // Reflection Chat States
+  // ── Reflection Chat ──
   const [summaryHistory, setSummaryHistory] = useState<any[]>([]);
   const [prdHistory, setPrdHistory] = useState<any[]>([]);
-  const [chatInput, setChatInput] = useState('');
   const [isChatLoading, setIsChatLoading] = useState(false);
-  const scrollRef = useRef<HTMLDivElement>(null);
+  const outputEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [summaryHistory, prdHistory]);
+    if (output) outputEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [output, summaryHistory, prdHistory]);
 
-  // Check browser support
-  const isSpeechSupported = typeof window !== 'undefined' &&
-    ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
-
-  // Helper to strip markdown code blocks from chat display
-  const cleanMessage = (content: string) => {
-    return content.split('```markdown')[0].split('```')[0].trim();
-  };
-
-  // Helper to extract document updates for history view
-  const extractUpdate = (content: string) => {
-    const parts = content.split('```markdown');
-    if (parts.length > 1) return parts[1].split('```')[0].trim();
-    const fallback = content.split('```');
-    if (fallback.length > 1) return fallback[1].trim();
-    return null;
-  };
-
-  // Helper to restore a historical version
-  const handleRestore = (content: string | null, mode: 'summary' | 'prd', version: number) => {
-    if (!content || !output) return;
-    setOutput(prev => prev ? { ...prev, [mode === 'summary' ? 'meeting_summary' : 'prd_draft']: content } : prev);
-    toast.success(`Restored ${mode.toUpperCase()} ${version === 0 ? 'Initial Draft' : `Snapshot v${version}`}`);
-    setAgentLogs(prev => [...prev, `Restored ${version === 0 ? 'original' : 'historical'} ${mode.toUpperCase()} version`]);
-    
-    // Smooth scroll main viewer to top for feedback
-    const viewerId = mode === 'summary' ? 'summary-viewer' : 'prd-viewer';
-    document.getElementById(viewerId)?.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Simulated agent steps for the UI
+  // ── Agent logs ──
   const [agentLogs, setAgentLogs] = useState<string[]>([]);
+  const [activeStep, setActiveStep] = useState(0);
   const agentMockSteps = [
-    "Reading transcript...",
-    "Supervisor Agent: Extracting context and speaker roles...",
-    "Summary Agent running...",
-    "Slack Update Agent running...",
-    "PRD Agent running...",
-    "Ticket Generator Agent running...",
-    "Classifying priorities and due dates...",
-    `Pushing tickets to ${DESTINATIONS.find(d => d.id === destination)?.name || 'platform'}...`
+    'Reading transcript...',
+    'Supervisor Agent: extracting context...',
+    'Summary Agent running...',
+    'Slack Update Agent running...',
+    'PRD Agent running...',
+    'Ticket Generator running...',
+    'Classifying priorities...',
+    `Pushing to ${DESTINATIONS.find(d => d.id === destination)?.name || 'platform'}...`,
   ];
-
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isLoading) {
@@ -161,10 +142,7 @@ export function FlowyWorkspace() {
       interval = setInterval(() => {
         setActiveStep(prev => {
           const next = prev + 1;
-          if (next < agentMockSteps.length) {
-             setAgentLogs(curr => [...curr, agentMockSteps[next]]);
-             return next;
-          }
+          if (next < agentMockSteps.length) { setAgentLogs(curr => [...curr, agentMockSteps[next]]); return next; }
           return prev;
         });
       }, 1500);
@@ -172,329 +150,292 @@ export function FlowyWorkspace() {
     return () => clearInterval(interval);
   }, [isLoading]);
 
+  const isSpeechSupported = typeof window !== 'undefined' && ('SpeechRecognition' in window || 'webkitSpeechRecognition' in window);
+
+  const cleanMessage = (content: string) => content.split('```markdown')[0].split('```')[0].trim();
+  const extractUpdate = (content: string) => {
+    const parts = content.split('```markdown');
+    if (parts.length > 1) return parts[1].split('```')[0].trim();
+    const fallback = content.split('```');
+    if (fallback.length > 1) return fallback[1].trim();
+    return null;
+  };
+  const handleRestore = (content: string | null, mode: 'summary' | 'prd', version: number) => {
+    if (!content || !output) return;
+    setOutput(prev => prev ? { ...prev, [mode === 'summary' ? 'meeting_summary' : 'prd_draft']: content } : prev);
+    toast.success(`Restored ${mode.toUpperCase()} ${version === 0 ? 'Initial Draft' : `v${version}`}`);
+  };
+
   // ── Speech Recognition ──
   const startRecording = useCallback(() => {
-    if (!isSpeechSupported) {
-      toast.error('Speech recognition is not supported in this browser. Please use Chrome.');
-      return;
-    }
-
-    const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognitionClass();
+    if (!isSpeechSupported) { toast.error('Use Chrome for speech recognition.'); return; }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const recognition = new SR();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = 'en-US';
-
     let finalTranscript = transcript;
-
     recognition.onresult = (event: SpeechRecognitionEvent) => {
-      let interimTranscript = '';
+      let interim = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        if (result.isFinal) {
-          finalTranscript += result[0].transcript + ' ';
-        } else {
-          interimTranscript += result[0].transcript;
-        }
+        const r = event.results[i];
+        if (r.isFinal) finalTranscript += r[0].transcript + ' ';
+        else interim += r[0].transcript;
       }
-      // UPDATE: Push both final and interim text to the UI for "Instant" feel
-      setTranscript(finalTranscript + interimTranscript);
+      setTranscript(finalTranscript + interim);
     };
-
     recognition.onend = () => {
-      // FIX: isRecording/isFullCapturing are NOT in the useCallback dependency array,
-      // so they are always stale (always false) inside this closure.
-      // Instead, we check recognitionRef.current which is a live ref:
-      //   - stopRecording() sets recognitionRef.current = null SYNCHRONOUSLY before onend fires
-      //   - If ref is still set, Chrome timed out on us internally → we must restart
-      //   - If ref is null, the user deliberately stopped → clean up
-      if (recognitionRef.current !== null) {
-        try {
-          recognition.start();
-        } catch (e) {
-          // Already started or busy
-        }
-      } else {
-        setIsRecording(false);
-        if (recordingTimerRef.current) {
-          clearInterval(recordingTimerRef.current);
-          recordingTimerRef.current = null;
-        }
-        setRecordingDuration(0);
-      }
+      if (recognitionRef.current !== null) { try { recognition.start(); } catch (_) {} }
+      else { setIsRecording(false); clearInterval(recordingTimerRef.current!); recordingTimerRef.current = null; setRecordingDuration(0); }
     };
-
-    recognition.onerror = (event: { error: string }) => {
-      // Ignore 'no-speech' and 'aborted' - they are common and shouldn't interrupt the user
-      if (event.error !== 'aborted' && event.error !== 'no-speech') {
-        console.error('Speech recognition error:', event.error);
-        toast.error(`Microphone error: ${event.error}`);
-        setIsRecording(false);
-      }
+    recognition.onerror = (e: { error: string }) => {
+      if (e.error !== 'aborted' && e.error !== 'no-speech') { toast.error(`Mic error: ${e.error}`); setIsRecording(false); }
     };
-
     recognitionRef.current = recognition;
     recognition.start();
     setIsRecording(true);
     setRecordingDuration(0);
-
-    recordingTimerRef.current = setInterval(() => {
-      setRecordingDuration(prev => prev + 1);
-    }, 1000);
-
-    toast.success('Recording started. Speak naturally.');
+    recordingTimerRef.current = setInterval(() => setRecordingDuration(prev => prev + 1), 1000);
+    toast.success('Recording started.');
   }, [isSpeechSupported, transcript]);
 
+  const stopRecording = useCallback(() => {
+    if (recognitionRef.current) { recognitionRef.current.stop(); recognitionRef.current = null; }
+    if (recordingTimerRef.current) { clearInterval(recordingTimerRef.current); recordingTimerRef.current = null; }
+    setIsRecording(false);
+    setRecordingDuration(0);
+    toast.success('Recording stopped.');
+  }, []);
 
   const startFullCapture = async () => {
     try {
-      const displayStream = await navigator.mediaDevices.getDisplayMedia({ 
-        video: true, 
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
-      });
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } as any });
       const micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-
-      if (displayStream.getAudioTracks().length === 0) {
-          displayStream.getTracks().forEach(t => t.stop());
-          micStream.getTracks().forEach(t => t.stop());
-          toast.error("No meeting audio found! Did you forget to check 'Share Audio' in the popup?");
-          return;
-      }
-
+      if (displayStream.getAudioTracks().length === 0) { displayStream.getTracks().forEach(t => t.stop()); micStream.getTracks().forEach(t => t.stop()); toast.error('No meeting audio. Did you check "Share Audio"?'); return; }
       setPreviewStream(displayStream);
-
       const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
       await audioCtx.resume();
       fullCaptureContextRef.current = audioCtx;
-      
-      const mixedDestination = audioCtx.createMediaStreamDestination();
-      const systemGain = audioCtx.createGain();
-      const micGain = audioCtx.createGain();
-      systemGain.gain.value = 1.2;
-      micGain.gain.value = 0.8;
-      
-      const displaySource = audioCtx.createMediaStreamSource(displayStream);
-      const micSource = audioCtx.createMediaStreamSource(micStream);
-      
-      displaySource.connect(systemGain);
-      systemGain.connect(mixedDestination);
-      micSource.connect(micGain);
-      micGain.connect(mixedDestination);
-      
+      const mixed = audioCtx.createMediaStreamDestination();
+      const sysGain = audioCtx.createGain(); sysGain.gain.value = 1.2;
+      const micGain = audioCtx.createGain(); micGain.gain.value = 0.8;
+      audioCtx.createMediaStreamSource(displayStream).connect(sysGain); sysGain.connect(mixed);
+      audioCtx.createMediaStreamSource(micStream).connect(micGain); micGain.connect(mixed);
       fullCaptureStreamsRef.current = [displayStream, micStream];
-
-      // Codec fallback for cross-browser compatibility
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : MediaRecorder.isTypeSupported('audio/webm')
-          ? 'audio/webm'
-          : '';
-
-      const recorder = new MediaRecorder(mixedDestination.stream, { 
-        ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: 128000
-      });
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '';
+      const recorder = new MediaRecorder(mixed.stream, { ...(mimeType ? { mimeType } : {}), audioBitsPerSecond: 128000 });
       mediaRecorderRef.current = recorder;
       audioChunksRef.current = [];
-
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) audioChunksRef.current.push(e.data);
-      };
-
+      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
       recorder.onstop = async () => {
-        setIsFullCapturing(false);
-        setPreviewStream(null);
-        stopRecording();
-
-        try {
-          if (fullCaptureStreamsRef.current) {
-            fullCaptureStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
-            fullCaptureStreamsRef.current = [];
-          }
-          if (fullCaptureContextRef.current && fullCaptureContextRef.current.state !== 'closed') {
-            fullCaptureContextRef.current.close();
-          }
-        } catch (e) { console.error("Cleanup error", e); }
-        
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-        console.log(`[TrueCapture] chunks=${audioChunksRef.current.length}, size=${audioBlob.size}bytes`);
-        
-        if (audioChunksRef.current.length === 0 || audioBlob.size < 500) {
-          toast.error('No audio captured. Please check "Share Audio" in the screen share popup.');
-          return;
-        }
-
-        setIsLoading(true);
-        setOutput(null);
-        setAgentLogs(['Merging dual-channel audio...', 'Connecting to Whisper engine...', 'Transcribing with diarization...']);
-        
-        try {
-          const result = await transcribeAudio(audioBlob, jiraKey.trim() || undefined, destination);
-          console.log('[TrueCapture] Whisper result:', result);
-          setOutput(result);
-          if (result.processing_steps) setAgentLogs(result.processing_steps);
-          if (result.raw_transcript) setTranscript(result.raw_transcript);
-          else if (result.meeting_summary) setTranscript(result.meeting_summary);
-        } catch (err: any) {
-          toast.error(err.message || 'Full capture failed');
-        } finally {
-          setIsLoading(false);
-        }
+        setIsFullCapturing(false); setPreviewStream(null); stopRecording();
+        try { fullCaptureStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop())); fullCaptureStreamsRef.current = []; if (fullCaptureContextRef.current?.state !== 'closed') fullCaptureContextRef.current?.close(); } catch (_) {}
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        if (audioChunksRef.current.length === 0 || blob.size < 500) { toast.error('No audio captured.'); return; }
+        setIsLoading(true); setOutput(null); setAgentLogs(['Merging dual-channel audio...', 'Connecting to Whisper...', 'Transcribing...']);
+        try { const r = await transcribeAudio(blob, jiraKey.trim() || undefined, destination); setOutput(r); if (r.processing_steps) setAgentLogs(r.processing_steps); if (r.raw_transcript) setTranscript(r.raw_transcript); else if (r.meeting_summary) setTranscript(r.meeting_summary); }
+        catch (err: any) { toast.error(err.message || 'Capture failed'); }
+        finally { setIsLoading(false); }
       };
-
       recorder.start(1000);
-      setIsFullCapturing(true);
-      setRecordingDuration(0);
-      recordingTimerRef.current = setInterval(() => { setRecordingDuration(prev => prev + 1); }, 1000);
-      // Start live speech preview alongside the recording
-      // Whisper will replace this with the accurate final transcript on stop
+      setIsFullCapturing(true); setRecordingDuration(0);
+      recordingTimerRef.current = setInterval(() => setRecordingDuration(prev => prev + 1), 1000);
       if (isSpeechSupported) startRecording();
-      toast.success('True Capture Active: Sharing meeting audio + your mic.');
-    } catch (err: any) {
-      console.error('Full capture error', err);
-      toast.error('Failed to start full capture. Make sure to allow both Mic and Screen Audio.');
-    }
+      toast.success('True Capture active.');
+    } catch (err: any) { toast.error('Failed to start capture.'); }
   };
-
-  const stopRecording = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-      recognitionRef.current = null;
-    }
-    if (recordingTimerRef.current) {
-      clearInterval(recordingTimerRef.current);
-      recordingTimerRef.current = null;
-    }
-    setIsRecording(false);
-    setRecordingDuration(0);
-    toast.success('Recording stopped. Transcript captured.');
-  }, []);
 
   const stopFullCapture = () => {
     if (mediaRecorderRef.current) mediaRecorderRef.current.stop();
-    if (fullCaptureStreamsRef.current) {
-      fullCaptureStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
-    }
+    fullCaptureStreamsRef.current.forEach(s => s.getTracks().forEach(t => t.stop()));
     if (fullCaptureContextRef.current) fullCaptureContextRef.current.close();
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
-    setIsFullCapturing(false);
-    setRecordingDuration(0);
+    setIsFullCapturing(false); setRecordingDuration(0);
   };
 
-  const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-    const s = (seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
+  const formatDuration = (s: number) => `${Math.floor(s / 60).toString().padStart(2, '0')}:${(s % 60).toString().padStart(2, '0')}`;
 
-  const handleChat = async (mode: 'summary' | 'prd') => {
-    if (!chatInput.trim() || !output) return;
-    const userMsg = { role: 'user', content: chatInput };
-    const history = mode === 'summary' ? summaryHistory : prdHistory;
+  const handleChat = async (mode: 'summary' | 'prd', message: string) => {
+    if (!output) return;
     const setHistory = mode === 'summary' ? setSummaryHistory : setPrdHistory;
-    setHistory(prev => [...prev, userMsg]);
-    setChatInput('');
+    const history   = mode === 'summary' ? summaryHistory    : prdHistory;
+    setHistory(prev => [...prev, { role: 'user', content: message }]);
     setIsChatLoading(true);
     try {
-      const currentContent = mode === 'summary' ? output.meeting_summary : (output.prd_draft || '');
-      const result = await chatWithFlowy(userMsg.content, history, transcript, currentContent, mode);
-      const assistantMsg = { role: 'assistant', content: result.response };
-      setHistory(prev => [...prev, assistantMsg]);
-      if (result.updated_content) {
-        setOutput(prev => prev ? { ...prev, [mode === 'summary' ? 'meeting_summary' : 'prd_draft']: result.updated_content } : prev);
-        setAgentLogs(prev => [...prev, `AI refined the ${mode.toUpperCase()} draft`]);
-      }
-    } catch (err: any) {
-      toast.error("Reflection failed: " + err.message);
-    } finally {
-      setIsChatLoading(false);
-    }
+      const current = mode === 'summary' ? output.meeting_summary : (output.prd_draft || '');
+      const result = await chatWithFlowy(message, history, transcript, current, mode);
+      setHistory(prev => [...prev, { role: 'assistant', content: result.response }]);
+      if (result.updated_content) setOutput(prev => prev ? { ...prev, [mode === 'summary' ? 'meeting_summary' : 'prd_draft']: result.updated_content } : prev);
+    } catch (err: any) { toast.error('Reflection failed: ' + err.message); }
+    finally { setIsChatLoading(false); }
   };
 
   const handleGenerate = async () => {
-    if (transcript.length < 20) {
-      toast.error('Transcript is too short to generate meaningful insights.');
-      return;
-    }
-    setIsLoading(true);
-    setOutput(null);
-    setAgentLogs([]);
+    if (transcript.length < 20) { toast.error('Transcript too short.'); return; }
+    setIsLoading(true); setOutput(null); setAgentLogs([]);
+    const t0 = Date.now();
     try {
       const result = await processTranscript(transcript, jiraKey.trim() || undefined, destination);
       setOutput(result);
-      
-      // Seed the initial history with 'Initial Version' snapshots
-      if (result.meeting_summary) {
-        setSummaryHistory([{
-          role: 'assistant',
-          content: `Initial summary generated. \n\n \`\`\`markdown\n${result.meeting_summary}\n\`\`\``
-        }]);
-      }
-      
-      if (result.prd_draft) {
-        setPrdHistory([{
-          role: 'assistant',
-          content: `Initial PRD draft generated. \n\n \`\`\`markdown\n${result.prd_draft}\n\`\`\``
-        }]);
-      }
-
-      if (result.processing_steps && result.processing_steps.length > 0) setAgentLogs(result.processing_steps);
-      else setAgentLogs(curr => [...curr, "Pipeline complete"]);
-      toast.success('Generated successfully');
-    } catch (e: any) {
-      toast.error(e.message || 'Error running agents.');
-      setAgentLogs(curr => [...curr, "Error processing transcript"]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSendSlack = async () => {
-    if (!output?.slack_update) return;
-    setIsSlackSending(true);
-    try {
-      await sendSlackMessage(output.slack_update);
-      toast.success('Slack message posted!');
-    } catch (e: any) {
-      toast.error(e.message || 'Failed to dispatch Slack message.');
-    } finally {
-      setIsSlackSending(false);
-    }
+      setPipelineMs(Date.now() - t0);
+      if (result.meeting_summary) setSummaryHistory([{ role: 'assistant', content: `Initial summary.\n\n\`\`\`markdown\n${result.meeting_summary}\n\`\`\`` }]);
+      if (result.prd_draft) setPrdHistory([{ role: 'assistant', content: `Initial PRD.\n\n\`\`\`markdown\n${result.prd_draft}\n\`\`\`` }]);
+      if (result.processing_steps?.length) setAgentLogs(result.processing_steps);
+      else setAgentLogs(curr => [...curr, 'Pipeline complete.']);
+      toast.success('Pipeline complete.');
+    } catch (e: any) { toast.error(e.message || 'Error running agents.'); setAgentLogs(curr => [...curr, 'Error.']); }
+    finally { setIsLoading(false); }
   };
 
   const selectedDest = DESTINATIONS.find(d => d.id === destination) || DESTINATIONS[0];
+  const wordCount = transcript.split(' ').filter(Boolean).length;
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-2 min-h-0 relative z-10 selection:bg-primary/30">
-      <div className="flex flex-col h-full space-y-4 min-h-0">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-bold flex items-center gap-2">Flowy AI Input</h2>
-          <div className="relative">
+    <div className="flex h-screen w-full bg-[#080808] text-white overflow-hidden font-sans">
+
+      {/* ═══════════════════════════════════════════════════
+          ZONE 1 — LEFT NAV STRIP
+      ═══════════════════════════════════════════════════ */}
+      <aside className={`flex flex-col border-r border-white/5 bg-[#0A0A0A] transition-all duration-300 shrink-0 ${navCollapsed ? 'w-[60px]' : 'w-[220px]'}`}>
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 p-4 border-b border-white/5 shrink-0">
+          <div className="size-7 rounded-full bg-white flex items-center justify-center shrink-0">
+            <Waves className="size-3.5 text-black" />
+          </div>
+          {!navCollapsed && <span className="text-sm font-black tracking-tighter uppercase">Flowy</span>}
+        </div>
+
+        {/* New Session */}
+        <div className="p-3 border-b border-white/5 shrink-0">
+          <button
+            onClick={() => { setOutput(null); setTranscript(''); setAgentLogs([]); toast.success('New session ready.'); }}
+            className={`flex items-center gap-2 w-full rounded-xl border border-white/8 bg-white/[0.02] hover:bg-white/[0.05] transition-colors px-3 py-2.5 text-white/60 hover:text-white ${navCollapsed ? 'justify-center' : ''}`}
+          >
+            <Plus className="size-3.5 shrink-0" />
+            {!navCollapsed && <span className="text-xs font-bold uppercase tracking-widest">New Session</span>}
+          </button>
+        </div>
+
+        {/* History placeholder */}
+        {!navCollapsed && (
+          <div className="flex-1 overflow-y-auto p-3 space-y-1">
+            <div className="text-[9px] font-mono text-white/15 tracking-[0.3em] uppercase px-2 mb-3">Today</div>
+            {['Sprint Planning', 'Q2 Roadmap Review', 'Bug Triage'].map((s, i) => (
+              <button key={i} className="w-full text-left px-2 py-2 rounded-lg text-xs text-white/35 hover:text-white hover:bg-white/5 transition-colors truncate">
+                {s}
+              </button>
+            ))}
+            <div className="text-[9px] font-mono text-white/15 tracking-[0.3em] uppercase px-2 mb-3 mt-5">This Week</div>
+            {['Design Sync', 'Investor Call'].map((s, i) => (
+              <button key={i} className="w-full text-left px-2 py-2 rounded-lg text-xs text-white/25 hover:text-white hover:bg-white/5 transition-colors truncate">
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Collapse toggle */}
+        <button
+          onClick={() => setNavCollapsed(!navCollapsed)}
+          className="flex items-center justify-center p-4 border-t border-white/5 text-white/20 hover:text-white transition-colors"
+        >
+          {navCollapsed ? <ChevronRight className="size-4" /> : <ChevronLeft className="size-4" />}
+        </button>
+      </aside>
+
+      {/* ═══════════════════════════════════════════════════
+          ZONE 2 — INPUT COLUMN
+      ═══════════════════════════════════════════════════ */}
+      <div className="w-[360px] shrink-0 flex flex-col border-r border-white/5 bg-[#0C0C0C]">
+        {/* Header */}
+        <div className="px-5 py-4 border-b border-white/5 shrink-0">
+          <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase mb-1">Input Module</div>
+          <h2 className="text-sm font-black uppercase tracking-tight text-white">Meeting Capture</h2>
+        </div>
+
+        {/* Capture Controls */}
+        <div className="px-5 py-3 border-b border-white/5 shrink-0 flex items-center gap-2">
+          <button
+            onClick={isFullCapturing ? stopFullCapture : startFullCapture}
+            className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg border transition-all ${isFullCapturing ? 'border-violet-500/50 text-violet-400 bg-violet-500/10 animate-pulse' : 'border-white/10 text-white/40 hover:text-white hover:border-white/30'}`}
+          >
+            <Radio className="size-3" />
+            {isFullCapturing ? `${formatDuration(recordingDuration)}` : 'True Capture'}
+          </button>
+          <button
+            onClick={isRecording ? stopRecording : startRecording}
+            disabled={isFullCapturing}
+            className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg border transition-all disabled:opacity-30 ${isRecording ? 'border-red-500/50 text-red-400 bg-red-500/10 animate-pulse' : 'border-white/10 text-white/40 hover:text-white hover:border-white/30'}`}
+          >
+            <Mic className="size-3" />
+            {isRecording ? formatDuration(recordingDuration) : 'Live Mic'}
+          </button>
+          <button
+            onClick={() => setTranscript(SAMPLE_TRANSCRIPT)}
+            disabled={isRecording || isFullCapturing}
+            className="ml-auto text-[10px] font-bold text-white/20 hover:text-white/50 transition-colors disabled:opacity-20 uppercase tracking-widest"
+          >
+            Sample →
+          </button>
+        </div>
+
+        {/* Transcript textarea */}
+        <div className="flex-1 relative min-h-0">
+          <textarea
+            className="absolute inset-0 w-full h-full resize-none bg-transparent p-5 text-sm text-white/70 placeholder:text-white/15 outline-none leading-relaxed font-mono"
+            placeholder="Paste a meeting transcript, or use Capture controls above..."
+            value={transcript}
+            onChange={e => setTranscript(e.target.value)}
+          />
+        </div>
+
+        {/* Word count */}
+        <div className="px-5 py-2 border-t border-white/5 shrink-0 flex items-center justify-between">
+          <span className="text-[10px] font-mono text-white/20">{wordCount} words</span>
+          {isRecording && <span className="text-[10px] font-mono text-red-400 animate-pulse">● RECORDING</span>}
+          {isFullCapturing && <span className="text-[10px] font-mono text-violet-400 animate-pulse">● TRUE CAPTURE</span>}
+        </div>
+
+        {/* Project Config */}
+        <div className="px-5 py-3 border-t border-white/5 shrink-0 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-white/20 uppercase tracking-[0.2em]">Project Key</span>
+            <input
+              type="text"
+              maxLength={10}
+              className="bg-white/[0.03] border border-white/8 rounded-lg px-2 py-1 text-xs font-mono uppercase text-white w-24 text-right outline-none focus:border-white/20 transition-colors"
+              value={jiraKey}
+              onChange={e => setJiraKey(e.target.value.toUpperCase())}
+            />
+          </div>
+
+          {/* Destination Picker */}
+          <div className="flex items-center justify-between relative">
+            <span className="text-[10px] font-mono text-white/20 uppercase tracking-[0.2em]">Destination</span>
             <button
               onClick={() => setShowDestDropdown(!showDestDropdown)}
-              className={`flex items-center gap-2 text-xs font-medium border rounded-lg px-3 py-1.5 hover:bg-muted/50 transition ${selectedDest.color}`}
+              className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-white/50 hover:text-white transition-colors"
             >
-              <span className={`size-2 rounded-full ${destination === 'jira' ? 'bg-blue-500' : destination === 'linear' ? 'bg-violet-500' : 'bg-rose-500'}`} />
-              Push to: {selectedDest.name}
-              <Icons.chevronDown className="size-3" />
+              <span className={`size-1.5 rounded-full ${selectedDest.dot}`} />
+              {selectedDest.name}
+              <Icons.chevronDown className="size-2.5" />
             </button>
             {showDestDropdown && (
-              <div className="absolute right-0 top-full mt-1 bg-popover border rounded-lg shadow-lg z-50 w-52 py-1">
+              <div className="absolute right-0 bottom-full mb-1 bg-[#111] border border-white/10 rounded-xl shadow-2xl z-50 w-44 py-1 overflow-hidden">
                 {DESTINATIONS.map(d => (
                   <button
                     key={d.id}
-                    onClick={() => {
-                      if (d.status === 'connected') setDestination(d.id);
-                      else toast.info(`${d.name} integration is on the waitlist.`);
-                      setShowDestDropdown(false);
-                    }}
-                    className={`w-full flex items-center justify-between px-3 py-2 text-sm hover:bg-muted/50 transition ${destination === d.id ? 'bg-muted/30 font-medium' : ''}`}
+                    onClick={() => { if (d.status === 'connected') setDestination(d.id); else toast.info(`${d.name} coming soon.`); setShowDestDropdown(false); }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 text-xs hover:bg-white/5 transition-colors ${destination === d.id ? 'text-white font-bold' : 'text-white/40'}`}
                   >
                     <span className="flex items-center gap-2">
-                      <span className={`size-2 rounded-full ${d.id === 'jira' ? 'bg-blue-500' : d.id === 'linear' ? 'bg-violet-500' : 'bg-rose-500'}`} />
+                      <span className={`size-1.5 rounded-full ${d.dot}`} />
                       {d.name}
                     </span>
-                    {d.status === 'connected' ? <Badge variant="outline" className="text-[10px] text-emerald-500 border-emerald-500/30">Connected</Badge> : <Badge variant="outline" className="text-[10px] text-muted-foreground">Waitlist</Badge>}
+                    {d.status === 'connected'
+                      ? <CheckCircle2 className="size-3 text-emerald-500" />
+                      : <span className="text-[9px] text-white/20 uppercase tracking-widest">Soon</span>
+                    }
                   </button>
                 ))}
               </div>
@@ -502,272 +443,313 @@ export function FlowyWorkspace() {
           </div>
         </div>
 
-        <Card className="flex flex-col flex-grow border border-white/10 bg-black/40 backdrop-blur-3xl shadow-2xl min-h-0 overflow-hidden rounded-2xl">
-          <CardHeader className="py-3 px-4 bg-white/5 border-b border-white/10 flex flex-row items-center justify-between shrink-0">
-             <CardTitle className="text-sm font-medium text-white/90">Meeting Transcript</CardTitle>
-             <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="sm" className={`h-8 gap-2 text-xs font-semibold rounded-lg transition-all ${isFullCapturing ? 'bg-indigo-500/10 text-indigo-500 animate-pulse' : 'hover:bg-indigo-500/10 hover:text-indigo-500'}`} onClick={isFullCapturing ? stopFullCapture : startFullCapture}>
-                    {isFullCapturing ? <Icons.spinner className="size-3 animate-spin" /> : <Icons.settings className="size-3" />}
-                    {isFullCapturing ? 'Stop Capture' : 'True Capture'}
-                  </Button>
-                  <Button variant="ghost" size="sm" className={`h-8 gap-2 text-xs font-semibold rounded-lg transition-all ${isRecording ? 'bg-red-500/10 text-red-500 animate-pulse' : 'hover:bg-red-500/10 hover:text-red-500'}`} onClick={isRecording ? stopRecording : startRecording} disabled={isFullCapturing}>
-                    <Icons.mic className="size-3" />
-                    {isRecording ? `Stop (${formatDuration(recordingDuration)})` : 'Record Live'}
-                  </Button>
-                  <Button variant="ghost" size="sm" className="h-8 gap-2 text-xs font-semibold hover:bg-muted/50 rounded-lg" onClick={() => setTranscript(SAMPLE_TRANSCRIPT)} disabled={isRecording || isFullCapturing}>
-                    Load Sample &rarr;
-                  </Button>
-                </div>
-             </div>
-          </CardHeader>
-          <CardContent className="p-0 relative flex-grow min-h-0 bg-transparent">
-            <Textarea
-              placeholder="Paste a meeting transcript, or click 'Record Live' to transcribe from your microphone..."
-              className="absolute inset-0 border-0 rounded-none focus-visible:ring-0 resize-none p-4 text-sm overflow-y-auto text-white placeholder:text-white/40"
-              value={transcript}
-              onChange={(e) => setTranscript(e.target.value)}
-            />
-          </CardContent>
-          <CardFooter className="flex justify-between items-center p-4 bg-white/[0.02] border-t border-white/10 shrink-0">
-            <div className="flex flex-col gap-2">
-              <div className="text-xs text-muted-foreground font-mono">
-                {transcript.split(' ').filter(Boolean).length} words
-                {isRecording && <span className="ml-2 text-red-500">Recording...</span>}
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-muted-foreground">Project Key (optional):</span>
-                <input type="text" maxLength={10} className="bg-background border rounded px-2 py-1 text-xs w-20 font-mono uppercase" placeholder="e.g. PROJ" value={jiraKey} onChange={e => setJiraKey(e.target.value.toUpperCase())} />
-              </div>
-            </div>
-            <Button onClick={handleGenerate} disabled={isLoading || transcript.length < 20} className="gap-2">
-              {isLoading ? <Icons.spinner className="animate-spin size-4" /> : <Icons.sparkles className="size-4" />}
-              {isLoading ? 'Agents Processing...' : 'Process with Flowy'}
-            </Button>
-          </CardFooter>
-        </Card>
+        {/* Process Button */}
+        <div className="p-4 border-t border-white/5 shrink-0">
+          <button
+            onClick={handleGenerate}
+            disabled={isLoading || transcript.length < 20}
+            className="w-full flex items-center justify-center gap-2 py-3.5 rounded-xl bg-white text-black font-black text-xs uppercase tracking-widest hover:bg-emerald-400 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+          >
+            {isLoading
+              ? <><Icons.spinner className="size-3.5 animate-spin" /> Processing...</>
+              : <><Icons.sparkles className="size-3.5" /> Process with Flowy</>
+            }
+          </button>
+        </div>
       </div>
 
-      <div className="flex flex-col h-full space-y-4 min-h-0">
-        <h2 className="text-xl font-bold flex items-center gap-2">Agent Output</h2>
-        <Card className="flex flex-col flex-grow border border-white/10 bg-black/40 backdrop-blur-3xl shadow-2xl overflow-hidden min-h-0 rounded-2xl">
-          {(!output && !isLoading) && (
-            <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground p-8 text-center space-y-4">
-               <Icons.page className="size-12 opacity-20" />
-               <p className="text-sm">Output space is empty.<br/>Paste a transcript or record a live meeting, then click process to generate PRDs, Tickets, and updates.</p>
+      {/* ═══════════════════════════════════════════════════
+          ZONE 3 — OUTPUT LEDGER
+      ═══════════════════════════════════════════════════ */}
+      <div className="flex-1 overflow-y-auto bg-[#080808]">
+        {/* Empty state */}
+        {!output && !isLoading && (
+          <div className="flex flex-col items-center justify-center h-full text-center p-12 space-y-6">
+            <div className="size-16 rounded-2xl border border-white/5 flex items-center justify-center mb-2">
+              <Waves className="size-7 text-white/10" />
             </div>
-          )}
-          {isLoading && (
-            <div className="flex flex-col h-full min-h-[300px] bg-black/80 text-emerald-400 font-mono text-sm p-4 rounded-b-xl overflow-y-auto w-full">
-              <div className="flex items-center gap-2 mb-4 text-emerald-500 font-bold border-b border-emerald-900/50 pb-2">
-                <Icons.spinner className="size-4 animate-spin" /> LIVE AGENT LOGS
-              </div>
+            <div>
+              <h3 className="text-2xl font-black tracking-tighter text-white/20 uppercase mb-2">Awaiting Input</h3>
+              <p className="text-sm text-white/15 max-w-sm leading-relaxed">Paste a transcript or record your meeting, then click <strong className="text-white/30">Process with Flowy</strong>.</p>
+            </div>
+            <div className="grid grid-cols-3 gap-3 mt-4 max-w-sm w-full">
+              {['[01] Summary', '[02] Tickets', '[03] PRD'].map((m, i) => (
+                <div key={i} className="border border-white/5 rounded-xl p-3 text-center">
+                  <span className="text-[9px] font-mono text-white/15 uppercase tracking-widest">{m}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Loading — Agent Logs */}
+        {isLoading && (
+          <div className="flex flex-col h-full p-8 max-w-3xl mx-auto">
+            <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase mb-6">// Pipeline Executing</div>
+            <div className="space-y-3">
               <AnimatePresence>
-                {agentLogs.map((log, index) => (
-                  <motion.div key={index} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} className="py-1 flex gap-2">
-                    <span className="opacity-50">[{new Date().toISOString().substring(11, 19)}]</span> {log}
+                {agentLogs.map((log, i) => (
+                  <motion.div
+                    key={i}
+                    initial={{ opacity: 0, x: -16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ duration: 0.4 }}
+                    className="flex items-center gap-4 font-mono text-sm"
+                  >
+                    <span className="text-white/15 text-[10px] tabular-nums">{String(i + 1).padStart(2, '0')}</span>
+                    <span className={i === agentLogs.length - 1 ? 'text-emerald-400' : 'text-white/30'}>{log}</span>
+                    {i === agentLogs.length - 1 && <Icons.spinner className="size-3 text-emerald-400 animate-spin" />}
                   </motion.div>
                 ))}
               </AnimatePresence>
             </div>
-          )}
-          {output && !isLoading && (
-             <Tabs defaultValue="tickets" className="flex flex-col h-full w-full">
-               <div className="bg-muted/30 border-b px-2 pt-2">
-                 <TabsList className="bg-transparent border-0 h-9 p-0 space-x-4">
-                   <TabsTrigger value="tickets" className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-xl rounded-b-none border-b-0 h-full px-4"><Icons.kanban className="size-4 mr-2" /> Tickets ({output.tickets.length})</TabsTrigger>
-                   <TabsTrigger value="summary" className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-xl rounded-b-none border-b-0 h-full px-4"><Icons.page className="size-4 mr-2" /> Summary</TabsTrigger>
-                   <TabsTrigger value="prd" className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-xl rounded-b-none border-b-0 h-full px-4"><Icons.post className="size-4 mr-2" /> PRD</TabsTrigger>
-                   <TabsTrigger value="slack" className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-xl rounded-b-none border-b-0 h-full px-4"><Icons.slack className="size-4 mr-2" /> Slack</TabsTrigger>
-                   <TabsTrigger value="logs" className="data-[state=active]:bg-background data-[state=active]:shadow-sm rounded-t-xl rounded-b-none border-b-0 h-full px-4"><Icons.code className="size-4 mr-2" /> Logs</TabsTrigger>
-                 </TabsList>
-               </div>
-               <div className="flex-grow overflow-y-auto p-4 min-h-0">
-                 <TabsContent value="tickets" className="mt-0 h-full space-y-4">
-                    {output.jira_error && <div className="bg-destructive/10 text-destructive text-sm p-3 rounded-md border border-destructive/20">Platform Connection Error: {output.jira_error}</div>}
-                    {output.jira_links.length > 0 && (
-                      <div className="bg-emerald-500/10 text-emerald-600 text-sm p-3 rounded-md border border-emerald-500/20 mb-4 flex flex-col gap-2">
-                         <div className="font-bold flex items-center gap-1">Live {selectedDest.name} Links</div>
-                         <div className="flex flex-wrap gap-2">
-                           {output.jira_links.map((link, i) => (
-                              <a key={i} href={link} target="_blank" rel="noreferrer" className="text-xs hover:underline bg-background px-2 py-1 rounded shadow-sm border border-emerald-500/30">{link.split('/').pop() || link} ↗</a>
-                           ))}
-                         </div>
+          </div>
+        )}
+
+        {/* Output Ledger */}
+        {output && !isLoading && (
+          <div className="max-w-4xl mx-auto py-10 px-8 space-y-1">
+
+            {/* Ledger Header */}
+            <div className="mb-10">
+              <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase mb-2">
+                Session // {new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                {pipelineMs && <span className="ml-4 text-emerald-500">Pipeline: {(pipelineMs / 1000).toFixed(1)}s</span>}
+              </div>
+              <h2 className="text-3xl font-black tracking-tighter text-white uppercase">Meeting Output</h2>
+              {output.jira_links?.length > 0 && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {output.jira_links.map((link, i) => (
+                    <a key={i} href={link} target="_blank" rel="noreferrer" className="text-[10px] font-mono text-emerald-400 border border-emerald-500/30 px-3 py-1 rounded-full hover:bg-emerald-500/10 transition-colors">
+                      {link.split('/').pop()} ↗
+                    </a>
+                  ))}
+                </div>
+              )}
+              {output.jira_error && (
+                <div className="mt-3 flex items-center gap-2 text-red-400 text-xs font-mono border border-red-500/20 rounded-xl px-3 py-2 bg-red-500/5">
+                  <AlertCircle className="size-3.5" /> {output.jira_error}
+                </div>
+              )}
+            </div>
+
+            {/* Module [01] — Executive Summary */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="border border-white/8 rounded-2xl p-8 bg-white/[0.015]"
+            >
+              <ModuleHeader index="01" title="Executive Summary" />
+              <div className="text-sm text-white/60 leading-relaxed whitespace-pre-wrap font-medium">
+                {output.meeting_summary}
+              </div>
+              <ReflectionBar onSend={msg => handleChat('summary', msg)} isLoading={isChatLoading} placeholder="Refine this summary..." />
+              {summaryHistory.length > 1 && (
+                <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
+                  {summaryHistory.slice(1).map((msg, i) => msg.role !== 'user' && extractUpdate(msg.content) && (
+                    <button
+                      key={i}
+                      onClick={() => handleRestore(extractUpdate(msg.content), 'summary', i + 1)}
+                      className="w-full text-left px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02] hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
+                    >
+                      <div className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest mb-1 flex items-center justify-between">
+                        <span>Snapshot v{i + 1}</span>
+                        <span className="opacity-0 group-hover:opacity-100 transition-opacity">Restore ↩</span>
                       </div>
-                    )}
-                    <div className="grid grid-cols-1 gap-3">
-                      {output.tickets.map(t => (
-                        <div key={t.ticket_id} className="border rounded-md p-3 bg-card shadow-sm hover:shadow-md transition">
-                          <div className="flex justify-between items-start mb-2">
-                            <div className="font-bold text-sm">{t.ticket_id}: {t.summary}</div>
-                            {t.jira_url && <a href={t.jira_url} target="_blank" rel="noreferrer" className="text-xs text-blue-500 hover:underline">{t.jira_key || 'View'} ↗</a>}
-                          </div>
-                          <div className="text-xs text-muted-foreground mb-3">{t.description}</div>
-                          <div className="flex gap-2 text-[10px]">
-                            <Badge variant="outline">{t.issue_type}</Badge>
-                            <Badge variant={t.priority === 'High' ? 'destructive' : t.priority === 'Medium' ? 'default' : 'secondary'}>{t.priority}</Badge>
-                            <Badge variant="secondary" className="font-mono">{t.assignee}</Badge>
-                          </div>
+                      <div className="text-[10px] text-white/30 italic line-clamp-1">{extractUpdate(msg.content)?.slice(0, 80)}...</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+
+            {/* Module [02] — Tickets */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="border border-white/8 rounded-2xl p-8 bg-white/[0.015]"
+            >
+              <ModuleHeader index="02" title={`Tickets → ${selectedDest.name}`} badge={`${output.tickets.length} Created`} />
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {output.tickets.map((t, i) => (
+                  <div key={t.ticket_id} className="border border-white/8 rounded-xl p-4 bg-white/[0.01] hover:bg-white/[0.03] transition-colors group">
+                    <div className="flex items-start justify-between mb-3">
+                      <span className={`text-[9px] font-mono border px-2 py-0.5 rounded-full ${PRIORITY_STYLE[t.priority] || PRIORITY_STYLE.Low}`}>
+                        {t.issue_type} · {t.priority}
+                      </span>
+                      {t.jira_url && (
+                        <a href={t.jira_url} target="_blank" rel="noreferrer" className="text-[9px] font-mono text-white/20 hover:text-white transition-colors">
+                          {t.jira_key} ↗
+                        </a>
+                      )}
+                    </div>
+                    <h4 className="text-xs font-black text-white/80 leading-tight mb-2">{t.summary}</h4>
+                    <p className="text-[10px] text-white/30 leading-relaxed line-clamp-3">{t.description}</p>
+                    <div className="mt-3 pt-3 border-t border-white/5 text-[9px] font-mono text-white/20">{t.assignee}</div>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Module [03] — PRD Draft */}
+            {output.prd_draft && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.2 }}
+                className="border border-white/8 rounded-2xl p-8 bg-white/[0.015]"
+              >
+                <ModuleHeader index="03" title="PRD Specification" />
+                <div className="prose prose-sm prose-invert max-w-none text-white/50 leading-relaxed whitespace-pre-wrap text-sm">
+                  {output.prd_draft}
+                </div>
+                <ReflectionBar onSend={msg => handleChat('prd', msg)} isLoading={isChatLoading} placeholder="Refine this PRD with any instruction..." />
+                {prdHistory.length > 1 && (
+                  <div className="mt-4 space-y-2 border-t border-white/5 pt-4">
+                    {prdHistory.slice(1).map((msg, i) => msg.role !== 'user' && extractUpdate(msg.content) && (
+                      <button
+                        key={i}
+                        onClick={() => handleRestore(extractUpdate(msg.content), 'prd', i + 1)}
+                        className="w-full text-left px-3 py-2 rounded-lg border border-white/5 bg-white/[0.02] hover:border-indigo-500/30 hover:bg-indigo-500/5 transition-colors group"
+                      >
+                        <div className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest mb-1 flex items-center justify-between">
+                          <span>Snapshot v{i + 1}</span>
+                          <span className="opacity-0 group-hover:opacity-100 transition-opacity">Restore ↩</span>
                         </div>
-                      ))}
-                    </div>
-                 </TabsContent>
+                        <div className="text-[10px] text-white/30 italic line-clamp-1">{extractUpdate(msg.content)?.slice(0, 80)}...</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
 
-                 <TabsContent value="summary" className="mt-0 h-full flex flex-col min-h-0">
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4 mb-4">
-                      <div className="text-sm whitespace-pre-wrap leading-relaxed text-muted-foreground bg-muted/20 p-4 rounded-xl border">{output.meeting_summary}</div>
-                      <div className="space-y-3">
-                        {summaryHistory.map((msg, i) => (
-                           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                              <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-sm transition-all ${
-                                msg.role === 'user' 
-                                  ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-tr-none shadow-indigo-200/50' 
-                                  : 'bg-white/60 dark:bg-black/40 backdrop-blur-md border border-white/20 rounded-tl-none text-foreground'
-                              }`}>
-                                {msg.role === 'user' ? msg.content : cleanMessage(msg.content)}
+            {/* Module [04] — Slack Dispatch */}
+            {output.slack_update && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.5, delay: 0.3 }}
+                className="border border-white/8 rounded-2xl p-8 bg-white/[0.015]"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-4">
+                    <span className="text-[10px] font-mono text-white/20 font-black tracking-[0.3em]">[04]</span>
+                    <h3 className="text-xs font-black text-white/50 uppercase tracking-[0.2em]">Slack Dispatch</h3>
+                  </div>
+                  <button
+                    onClick={async () => { setIsSlackSending(true); try { await sendSlackMessage(output.slack_update); toast.success('Posted to Slack!'); } catch (e: any) { toast.error(e.message); } finally { setIsSlackSending(false); } }}
+                    disabled={isSlackSending}
+                    className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest px-3 py-2 rounded-lg border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10 transition-all disabled:opacity-30"
+                  >
+                    {isSlackSending ? <Icons.spinner className="size-3 animate-spin" /> : <Send className="size-3" />}
+                    Push Live
+                  </button>
+                </div>
+                <div className="bg-[#1A1D21] rounded-xl p-4 font-mono text-xs text-white/50 whitespace-pre-wrap leading-relaxed border border-white/5">
+                  {output.slack_update}
+                </div>
+              </motion.div>
+            )}
 
-                                {/* Document Evolution Snapshot */}
-                                {msg.role !== 'user' && msg.content.includes('```') && (
-                                  <div 
-                                    className="mt-3 bg-background/50 rounded-xl border border-white/10 p-2.5 text-[11px] font-mono overflow-hidden cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-colors group"
-                                    onClick={() => handleRestore(extractUpdate(msg.content), 'summary', i)}
-                                  >
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <div className="flex items-center gap-1.5 text-indigo-500 font-semibold uppercase tracking-wider text-[9px]">
-                                        <Icons.history className="size-3" /> {i === 0 ? 'Initial Summary' : `Revised Summary v${i}`}
-                                      </div>
-                                      <div className="text-[9px] text-indigo-400 font-medium group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                        Restore <Icons.clock className="size-2" />
-                                      </div>
-                                    </div>
-                                    <div className="line-clamp-2 opacity-70 italic">
-                                      {extractUpdate(msg.content)?.slice(0, 100)}...
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                           </div>
-                        ))}
-                        <div ref={scrollRef} />
-                      </div>
-                    </div>
-                    <div className="relative mt-auto">
-                      <input className="w-full bg-background border rounded-full px-4 py-2 text-xs focus:ring-1 focus:ring-indigo-500 outline-none pr-10" placeholder="Ask Flowy to change the summary or cross-question..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleChat('summary')} disabled={isChatLoading} />
-                      <Button size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2 size-7 hover:bg-transparent text-indigo-500" onClick={() => handleChat('summary')} disabled={isChatLoading}>
-                         {isChatLoading ? <Icons.spinner className="size-3 animate-spin"/> : <Icons.send className="size-3"/>}
-                      </Button>
-                    </div>
-                 </TabsContent>
-
-                 <TabsContent value="prd" className="mt-0 h-full flex flex-col min-h-0">
-                    <div className="flex-grow overflow-y-auto pr-2 space-y-4 mb-4">
-                      <div className="prose prose-sm dark:prose-invert max-w-none text-muted-foreground whitespace-pre-wrap bg-muted/20 p-4 rounded-xl border">{output.prd_draft}</div>
-                      <div className="space-y-3">
-                        {prdHistory.map((msg, i) => (
-                           <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                              <div className={`max-w-[85%] px-4 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-sm transition-all ${
-                                msg.role === 'user' 
-                                  ? 'bg-gradient-to-br from-indigo-600 to-violet-700 text-white rounded-tr-none shadow-indigo-200/50' 
-                                  : 'bg-white/60 dark:bg-black/40 backdrop-blur-md border border-white/20 rounded-tl-none text-foreground'
-                              }`}>
-                                {msg.role === 'user' ? msg.content : cleanMessage(msg.content)}
-
-                                {/* Document Evolution Snapshot */}
-                                {msg.role !== 'user' && msg.content.includes('```') && (
-                                  <div 
-                                    className="mt-3 bg-background/50 rounded-xl border border-white/10 p-2.5 text-[11px] font-mono overflow-hidden cursor-pointer hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-colors group"
-                                    onClick={() => handleRestore(extractUpdate(msg.content), 'prd', i)}
-                                  >
-                                    <div className="flex items-center justify-between mb-1.5">
-                                      <div className="flex items-center gap-1.5 text-indigo-500 font-semibold uppercase tracking-wider text-[9px]">
-                                        <Icons.history className="size-3" /> {i === 0 ? 'Initial PRD' : `Revised PRD v${i}`}
-                                      </div>
-                                      <div className="text-[9px] text-indigo-400 font-medium group-hover:text-indigo-500 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                                        Restore <Icons.clock className="size-2" />
-                                      </div>
-                                    </div>
-                                    <div className="line-clamp-2 opacity-70 italic text-[10px] leading-tight">
-                                      {extractUpdate(msg.content)?.slice(0, 100)}...
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                           </div>
-                        ))}
-                        <div ref={scrollRef} />
-                      </div>
-                      </div>
-                    <div className="relative mt-auto">
-                      <input className="w-full bg-background border rounded-full px-4 py-2 text-xs focus:ring-1 focus:ring-indigo-500 outline-none pr-10" placeholder="Refine this PRD with instructions or questions..." value={chatInput} onChange={e => setChatInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleChat('prd')} disabled={isChatLoading} />
-                      <Button size="icon" variant="ghost" className="absolute right-1 top-1/2 -translate-y-1/2 size-7 hover:bg-transparent text-indigo-500" onClick={() => handleChat('prd')} disabled={isChatLoading}>
-                        {isChatLoading ? <Icons.spinner className="size-3 animate-spin"/> : <Icons.send className="size-3"/>}
-                      </Button>
-                    </div>
-                 </TabsContent>
-
-                 <TabsContent value="slack" className="mt-0 h-full flex flex-col h-full">
-                    <div className="flex justify-between items-center mb-4">
-                       <span className="text-sm font-medium text-muted-foreground">Preview before dispatching to #product-updates</span>
-                       <Button size="sm" onClick={handleSendSlack} disabled={isSlackSending} variant="outline" className="border-indigo-500 text-indigo-500 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-                         {isSlackSending ? <Icons.spinner className="size-4 animate-spin mr-2" /> : <Icons.send className="size-4 mr-2" />}
-                         Push Live
-                       </Button>
-                    </div>
-                    <div className="bg-muted p-4 rounded-md font-mono text-xs whitespace-pre-wrap flex-grow border">
-                       {output.slack_update}
-                    </div>
-                 </TabsContent>
-
-                 <TabsContent value="logs" className="mt-0 h-full bg-slate-950 text-emerald-400 font-mono text-xs p-4 rounded-md">
-                   {output.processing_steps.map((step, i) => (
-                     <div key={i} className="mb-1 py-1">
-                       <span className="opacity-50">[{new Date().toISOString().substring(11, 19)}]</span> {step}
-                     </div>
-                   ))}
-                 </TabsContent>
-               </div>
-             </Tabs>
-          )}
-
-        </Card>
+            <div ref={outputEndRef} className="h-10" />
+          </div>
+        )}
       </div>
 
-      {/* ── Floating Live Monitor ── */}
+      {/* ═══════════════════════════════════════════════════
+          ZONE 4 — RIGHT CONTROL CENTER
+      ═══════════════════════════════════════════════════ */}
+      <aside className="w-[260px] shrink-0 flex flex-col border-l border-white/5 bg-[#0A0A0A] overflow-y-auto">
+        <div className="px-5 py-4 border-b border-white/5">
+          <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase mb-1">Run Settings</div>
+          <h2 className="text-sm font-black uppercase tracking-tight text-white">Control Center</h2>
+        </div>
+
+        {/* Connection status */}
+        <div className="px-5 py-4 border-b border-white/5 space-y-3">
+          <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase">Connections</div>
+          {[
+            { name: 'Jira Cloud', status: 'Connected', ok: true },
+            { name: 'Whisper API', status: 'Active', ok: true },
+            { name: 'Slack Web API', status: 'Connected', ok: true },
+          ].map((c, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <span className="text-xs text-white/40 font-medium">{c.name}</span>
+              <span className={`text-[9px] font-mono uppercase tracking-widest ${c.ok ? 'text-emerald-400' : 'text-red-400'}`}>{c.status}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Pipeline Metrics */}
+        <div className="px-5 py-4 border-b border-white/5 space-y-3">
+          <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase">Session Metrics</div>
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40">Words</span>
+            <span className="text-xs font-mono text-white/60">{wordCount}</span>
+          </div>
+          {pipelineMs && (
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-white/40">Latency</span>
+              <span className="text-xs font-mono text-emerald-400">{(pipelineMs / 1000).toFixed(1)}s</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-white/40">Agents</span>
+            <span className="text-xs font-mono text-white/60">4 parallel</span>
+          </div>
+        </div>
+
+        {/* Agent Log Ticker */}
+        <div className="px-5 py-4 border-b border-white/5 flex-1">
+          <div className="text-[9px] font-mono text-white/20 tracking-[0.3em] uppercase mb-3 flex items-center gap-2">
+            Agent Logs
+            {isLoading && <Icons.spinner className="size-2.5 text-emerald-400 animate-spin" />}
+          </div>
+          <div className="space-y-2 font-mono text-[10px]">
+            {agentLogs.length === 0 && (
+              <div className="text-white/15">Awaiting pipeline...</div>
+            )}
+            {agentLogs.map((log, i) => (
+              <div key={i} className={`${i === agentLogs.length - 1 && isLoading ? 'text-emerald-400' : 'text-white/20'} leading-relaxed`}>
+                <span className="text-white/10 mr-2">{String(i + 1).padStart(2, '0')}</span>{log}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Re-run */}
+        {output && (
+          <div className="p-4 border-t border-white/5">
+            <button
+              onClick={handleGenerate}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-white/10 text-white/40 hover:text-white hover:border-white/30 text-[10px] font-black uppercase tracking-widest transition-all disabled:opacity-20"
+            >
+              <RefreshCw className="size-3" />
+              Re-run Pipeline
+            </button>
+          </div>
+        )}
+      </aside>
+
+      {/* Floating live capture monitor */}
       <AnimatePresence>
         {isFullCapturing && previewStream && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.9, y: 20 }}
-            className="fixed bottom-6 right-6 w-72 aspect-video bg-background/80 backdrop-blur-xl border border-primary/20 rounded-xl shadow-2xl overflow-hidden z-50 group pointer-events-none"
+            className="fixed bottom-6 right-[280px] w-72 aspect-video bg-background/80 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
           >
             <div className="absolute top-2 left-2 z-10 flex items-center gap-2">
-              <Badge className="bg-red-500 animate-pulse text-[10px] px-1.5 h-4 border-none">
-                LIVE CAPTURE
-              </Badge>
-              <div className="text-[10px] text-white bg-black/50 px-1.5 h-4 rounded-full backdrop-blur-sm flex items-center gap-1">
-                <Icons.monitor className="size-2" />
-                Dual-Source
-              </div>
+              <Badge className="bg-red-500 text-[9px] px-1.5 h-4 border-none animate-pulse">LIVE</Badge>
             </div>
-            
-            <video
-              ref={(el) => {
-                if (el) el.srcObject = previewStream;
-              }}
-              autoPlay
-              muted
-              playsInline
-              className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-500"
-            />
-            
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60" />
-            <div className="absolute bottom-2 left-2 right-2 text-[10px] text-white flex justify-between items-center font-mono font-bold tracking-tight">
-               <span>MONITORING STREAM</span>
-               <span className="flex items-center gap-1">
-                 {formatDuration(recordingDuration)}
-                 <span className="size-1.5 bg-red-500 rounded-full animate-pulse" />
-               </span>
+            <video ref={el => { if (el) el.srcObject = previewStream; }} autoPlay muted playsInline className="w-full h-full object-cover" />
+            <div className="absolute bottom-2 right-2 text-[9px] font-mono text-white bg-black/60 px-2 py-0.5 rounded-full">
+              {formatDuration(recordingDuration)} ●
             </div>
           </motion.div>
         )}
