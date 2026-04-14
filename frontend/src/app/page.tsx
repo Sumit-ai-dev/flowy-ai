@@ -15,10 +15,10 @@ const G = "#00E676";
 function Reveal({ children, delay = 0, y = 30, className = "" }: { children: React.ReactNode, delay?: number, y?: number, className?: string }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-50px" }}
-      transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1], delay }}
+      initial={{ opacity: 0, y, scale: 0.98 }}
+      whileInView={{ opacity: 1, y: 0, scale: 1 }}
+      viewport={{ once: true, margin: "-100px" }}
+      transition={{ duration: 0.8, ease: [0.16, 1, 0.3, 1], delay }}
       className={className}
     >
       {children}
@@ -43,13 +43,17 @@ function SpotlightCard({ children, className = "" }: { children: React.ReactNode
       onMouseMove={handleMouseMove}
       onMouseEnter={() => setOpacity(1)}
       onMouseLeave={() => setOpacity(0)}
-      className={cn("relative overflow-hidden group transition-colors duration-500", className)}
+      className={cn(
+        "relative overflow-hidden group transition-all duration-500",
+        "bg-white/[0.03] backdrop-blur-3xl border border-white/10 hover:border-white/20",
+        className
+      )}
     >
       <div
         className="pointer-events-none absolute -inset-px transition-opacity duration-300 z-0"
         style={{
           opacity,
-          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(0,230,118,0.1), transparent 40%)`,
+          background: `radial-gradient(600px circle at ${position.x}px ${position.y}px, rgba(0,230,118,0.15), transparent 40%)`,
         }}
       />
       <div className="relative z-10">{children}</div>
@@ -161,6 +165,91 @@ const STEPS = [
   },
 ];
 
+function InteractiveHeroBackdrop() {
+  const [m, setM] = useState({ x: 0, y: 0 });
+  const [isReady, setIsReady] = useState(false);
+
+  useEffect(() => {
+    setIsReady(true);
+    const handleMove = (e: MouseEvent) => {
+      setM({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener("mousemove", handleMove);
+    return () => window.removeEventListener("mousemove", handleMove);
+  }, []);
+
+  if (!isReady) return <div className="absolute inset-0 bg-[#060606]" />;
+
+  return (
+    <div className="absolute inset-0 bg-[#060606] overflow-hidden">
+      {/* ── BASE GENERATED IMAGE ─────────────────────────────────────── */}
+      <motion.div
+        className="absolute inset-0 opacity-40 bg-cover bg-center"
+        style={{ backgroundImage: "url('/aesthetic-hero-bg.png')" }}
+        animate={{ scale: [1, 1.05, 1] }}
+        transition={{ duration: 40, repeat: Infinity, ease: "easeInOut" }}
+      />
+
+      {/* ── AMBIENT GLOW BLOBS ────────────────────────────────────────── */}
+      <motion.div
+        className="absolute w-[60vw] h-[60vw] rounded-full blur-[120px] opacity-15 pointer-events-none"
+        animate={{
+          x: m.x * 0.05,
+          y: m.y * 0.05,
+          scale: [1, 1.1, 1],
+        }}
+        transition={{ scale: { duration: 10, repeat: Infinity, ease: "easeInOut" } }}
+        style={{
+          background: "radial-gradient(circle, rgba(0,230,118,0.4) 0%, transparent 70%)",
+          left: "10%",
+          top: "10%",
+        }}
+      />
+      <motion.div
+        className="absolute w-[50vw] h-[50vw] rounded-full blur-[100px] opacity-15 pointer-events-none"
+        animate={{
+          x: m.x * -0.03,
+          y: m.y * -0.03,
+          scale: [1, 1.2, 1],
+        }}
+        transition={{ scale: { duration: 15, repeat: Infinity, ease: "easeInOut" } }}
+        style={{
+          background: "radial-gradient(circle, rgba(147,51,234,0.4) 0%, transparent 70%)",
+          right: "15%",
+          bottom: "10%",
+        }}
+      />
+      <motion.div
+        className="absolute w-[40vw] h-[40vw] rounded-full blur-[90px] opacity-10 pointer-events-none"
+        animate={{
+          x: m.x * 0.02,
+          y: m.y * -0.04,
+        }}
+        style={{
+          background: "radial-gradient(circle, rgba(56,189,248,0.4) 0%, transparent 70%)",
+          left: "40%",
+          top: "30%",
+        }}
+      />
+
+      {/* ── TECHNICAL OVERLAY ─────────────────────────────────────────── */}
+      <div className="absolute inset-0 bg-noise opacity-[0.03] mix-blend-overlay pointer-events-none" />
+      <div className="absolute inset-0 pointer-events-none" style={{
+        backgroundImage: "linear-gradient(to right,rgba(255,255,255,0.015) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.015) 1px,transparent 1px)",
+        backgroundSize: "4rem 4rem"
+      }} />
+
+      {/* ── SCANLINE ──────────────────────────────────────────────────── */}
+      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+        <div className="w-full h-[1px] bg-white/[0.03] absolute top-0" style={{ animation: "scanline 8s linear infinite" }} />
+      </div>
+
+      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#060606]/40 to-[#060606]" />
+    </div>
+  );
+}
+
+
 function PipelineSection() {
   const [active, setActive] = useState(0);
   const [progress, setProgress] = useState(0);
@@ -181,7 +270,7 @@ function PipelineSection() {
   const Panel = step.panel;
 
   return (
-    <section className="py-28 px-6 md:px-12 border-b border-white/5 bg-[#0A0A0A]">
+    <section className="relative z-10 py-28 px-6 md:px-12 border-b border-white/5 bg-transparent">
       <div className="max-w-7xl mx-auto">
         <div className="mb-14">
           <p className="text-[11px] font-bold tracking-[0.2em] uppercase mb-4" style={{ color: G }}>The Pipeline</p>
@@ -237,6 +326,26 @@ function PipelineSection() {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════ */
+function SectionBackdrop() {
+  return (
+    <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden select-none">
+      {/* ── AMBIENT MOOD ────────────────────────────────────────────────── */}
+      <div className="absolute top-[10%] left-[-10%] w-[70vw] h-[70vw] rounded-full bg-emerald-500/5 blur-[120px] animate-aurora" />
+      <div className="absolute top-[40%] right-[-10%] w-[60vw] h-[60vw] rounded-full bg-indigo-500/5 blur-[120px] animate-aurora" style={{ animationDelay: "-5s" }} />
+      <div className="absolute bottom-[10%] left-[10%] w-[80vw] h-[80vw] rounded-full bg-purple-500/5 blur-[150px] animate-aurora" style={{ animationDelay: "-10s" }} />
+
+      {/* ── NEURAL MESH (Dots) ─────────────────────────────────────────── */}
+      <div className="absolute inset-0 opacity-[0.15]" style={{
+        backgroundImage: `radial-gradient(circle at 1px 1px, rgba(255,255,255,0.05) 1px, transparent 0)`,
+        backgroundSize: '40px 40px'
+      }} />
+
+      {/* ── NOISE / TEXTURE ────────────────────────────────────────────── */}
+      <div className="absolute inset-0 bg-noise opacity-[0.02]" />
+    </div>
+  );
+}
+
 export default function LandingPage() {
   const [scrolled, setScrolled] = useState(false);
   useEffect(() => {
@@ -247,6 +356,7 @@ export default function LandingPage() {
 
   return (
     <main className="bg-[#0A0A0A] text-white overflow-x-hidden font-sans selection:bg-white/20 relative">
+      <SectionBackdrop />
       {/* ── GLOBAL FILM GRAIN (Obsidian Style) ───────────────────────── */}
       <div className="pointer-events-none fixed inset-0 z-[100] opacity-[0.04] mix-blend-overlay"
         style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E\")" }}
@@ -285,20 +395,7 @@ export default function LandingPage() {
 
       {/* ── HERO ─────────────────────────────────────────────────────────── */}
       <section className="relative min-h-screen flex flex-col items-center justify-center px-4 overflow-hidden">
-        {/* Background photo */}
-        {/* Background photo */}
-        <div className="absolute inset-0 bg-[#060606] overflow-hidden">
-          <motion.div className="absolute inset-0"
-            style={{ backgroundImage: "url('/person-bg.png')", backgroundSize: "cover", backgroundPosition: "center" }}
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 30, ease: "easeInOut", repeat: Infinity }}
-          />
-          <div className="absolute inset-0 bg-black/70" />
-          <div className="absolute inset-0" style={{
-            backgroundImage: "linear-gradient(to right,rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(to bottom,rgba(255,255,255,0.02) 1px,transparent 1px)",
-            backgroundSize: "5rem 5rem"
-          }} />
-        </div>
+        <InteractiveHeroBackdrop />
 
         <div className="relative z-10 max-w-5xl mx-auto text-center w-full flex flex-col items-center">
           {/* Badge */}
@@ -307,11 +404,11 @@ export default function LandingPage() {
             VibeCon Hackathon 2026
           </div>
 
-          <h1 className="text-[clamp(4rem,14vw,11rem)] font-black tracking-[-0.04em] leading-none text-white mb-6 select-none">
+          <h1 className="text-[clamp(4rem,14vw,11rem)] font-black tracking-[-0.05em] leading-none text-white mb-6 select-none mix-blend-difference">
             FLOWY
           </h1>
 
-          <p className="text-[clamp(0.7rem,1.6vw,1rem)] font-semibold tracking-[0.3em] text-white/35 uppercase mb-8">
+          <p className="text-[clamp(0.7rem,1.6vw,1rem)] font-bold tracking-[0.4em] text-white/30 uppercase mb-8">
             MEETINGS BECOME PIPELINES.
           </p>
 
@@ -338,13 +435,13 @@ export default function LandingPage() {
       </section>
 
       {/* ── TICKER ───────────────────────────────────────────────────────── */}
-      <div className="overflow-hidden py-4 border-y border-white/8 bg-[#0A0A0A]">
+      <div className="relative z-10 overflow-hidden py-4 border-y border-white/8 bg-white/[0.02] backdrop-blur-md">
         <div className="flex whitespace-nowrap" style={{ animation: "ticker 40s linear infinite" }}>
           {[...Array(3)].map((_, groupIndex) => (
             <React.Fragment key={groupIndex}>
               {["Multi-Model Orchestration","Whisper Transcription","Live Jira Push","PRD Generation","Stateful Memory Graph","FastAPI Backend","Agentic AI","Sub-10s Pipeline"].map((t, i) => (
-                <span key={`${groupIndex}-${i}`} className="mx-12 text-white/25 text-[11px] font-semibold tracking-[0.2em] uppercase">
-                  {t} <span className="ml-12 text-white/15">—</span>
+                <span key={`${groupIndex}-${i}`} className="mx-12 text-white/25 text-[11px] font-bold tracking-[0.25em] uppercase">
+                  {t} <span className="ml-12 text-white/10">—</span>
                 </span>
               ))}
             </React.Fragment>
@@ -352,8 +449,22 @@ export default function LandingPage() {
         </div>
       </div>
 
+      {/* ── [01] THE COGNITIVE GAP (Problem) ────────────────────────────── */}
+      <section className="relative z-10 py-32 px-6 flex flex-col items-center justify-center text-center">
+        <Reveal>
+          <div className="max-w-4xl mx-auto">
+            <h2 className="text-[clamp(2rem,8vw,5.5rem)] font-black tracking-[-0.04em] leading-[0.9] text-white mb-10 uppercase">
+              Modern meetings<br/>are <span className="text-white/20">action black holes.</span>
+            </h2>
+            <p className="max-w-2xl mx-auto text-white/40 text-lg leading-relaxed font-medium">
+              60 minutes of audio. 0 minutes of progress. Most teams spend more time documenting decisions than making them. Flowy bridges the cognitive gap.
+            </p>
+          </div>
+        </Reveal>
+      </section>
+
       {/* ── STATS ────────────────────────────────────────────────────────── */}
-      <section className="py-24 px-6 border-b border-white/5 bg-[#0A0A0A]">
+      <section className="relative z-10 py-24 px-6 border-b border-white/5 bg-transparent">
         <div className="max-w-5xl mx-auto grid grid-cols-2 md:grid-cols-4">
           {[
             { label: "Full Pipeline",     display: "< 10s", count: false },
@@ -372,8 +483,30 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* ── [02] DISTRIBUTED INTELLIGENCE (Use Cases) ───────────────────── */}
+      <section className="relative z-10 py-16 px-6 border-b border-white/5 bg-transparent">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-1 px-4">
+          {[
+            { id: "01", role: "Product Leads", desc: "Automate technical specifications and roadmaps directly from brainstorming sessions." },
+            { id: "02", role: "Engineering",    desc: "Seamlessly route verified decisions into Jira tickets with full context preservation." },
+            { id: "03", role: "Project Ops",    desc: "Dispatch high-fidelity executive summaries and Slack updates with zero manual effort." },
+          ].map((u, i) => (
+            <Reveal key={i} delay={i * 0.1}>
+              <div className="group relative p-10 border border-white/10 bg-white/[0.01] hover:bg-white/[0.03] transition-all duration-500 min-h-[300px] flex flex-col justify-between">
+                <div>
+                  <span className="block text-[10px] font-mono text-white/20 mb-10 tracking-[0.3em] font-bold uppercase">[{u.id}] // Cognitive Module</span>
+                  <h3 className="text-2xl font-black text-white mb-4 uppercase tracking-tight">{u.role}</h3>
+                  <p className="text-sm text-white/40 leading-relaxed max-w-[240px] font-medium">{u.desc}</p>
+                </div>
+                <div className="size-1.5 rounded-full bg-white/10 group-hover:bg-[#00E676] group-hover:shadow-[0_0_10px_#00E676] transition-all duration-500" />
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
       {/* ── FEATURES BENTO ───────────────────────────────────────────────── */}
-      <section id="features" className="py-28 px-6 md:px-12 border-b border-white/5 bg-[#0A0A0A]">
+      <section id="features" className="relative z-10 py-28 px-6 md:px-12 border-b border-white/5 bg-transparent">
         <div className="max-w-7xl mx-auto">
           <Reveal>
             <div className="mb-16">
@@ -460,7 +593,7 @@ export default function LandingPage() {
       </div>
 
       {/* ── OUTPUTS ──────────────────────────────────────────────────────── */}
-      <section className="py-28 px-6 md:px-12 border-b border-white/5 bg-[#0A0A0A]">
+      <section className="relative z-10 py-28 px-6 md:px-12 border-b border-white/5 bg-transparent">
         <div className="max-w-7xl mx-auto">
           <Reveal>
             <div className="mb-16">
@@ -488,6 +621,31 @@ export default function LandingPage() {
               </Reveal>
             ))}
           </div>
+        </div>
+      </section>
+
+      {/* ── [04] JOIN THE ASSEMBLY (Waitlist) ─────────────────────────── */}
+      <section className="relative z-10 py-32 px-6 border-b border-white/5 bg-transparent">
+        <div className="max-w-3xl mx-auto text-center">
+          <Reveal>
+            <h2 className="text-4xl md:text-5xl font-black tracking-tighter text-white mb-6 uppercase">
+              Join the Assembly.
+            </h2>
+            <p className="text-white/40 mb-12 text-lg">
+              Secure your place in the future of cognitive orchestration.
+            </p>
+            
+            <form className="flex flex-col md:flex-row gap-3 max-w-lg mx-auto" onSubmit={(e) => e.preventDefault()}>
+              <input 
+                type="email" 
+                placeholder="system@access.io" 
+                className="flex-1 px-6 py-4 rounded-2xl bg-white/[0.03] border border-white/10 text-white placeholder:text-white/20 focus:outline-none focus:border-[#00E676]/50 transition-all font-mono text-sm"
+              />
+              <button className="px-8 py-4 rounded-2xl bg-white text-black font-black text-sm hover:bg-[#00E676] transition-all uppercase tracking-widest">
+                Dispatch
+              </button>
+            </form>
+          </Reveal>
         </div>
       </section>
 
@@ -558,17 +716,59 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ── FOOTER ───────────────────────────────────────────────────────── */}
-      <footer className="border-t border-white/5 px-8 py-10 flex flex-col md:flex-row justify-between items-center gap-4 bg-[#0A0A0A]">
-        <div className="flex items-center gap-3 text-sm text-white">
-          <div className="size-7 rounded-full bg-white flex items-center justify-center">
-            <Waves className="size-3.5 text-black" />
+      <footer className="relative z-10 border-t border-white/5 bg-[#080808] px-8 pt-20 pb-12 overflow-hidden">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-12 mb-20">
+            <div className="col-span-2">
+              <div className="flex items-center gap-2.5 text-white mb-6">
+                <div className="size-8 rounded-full bg-white flex items-center justify-center">
+                  <Waves className="size-4 text-black" />
+                </div>
+                <span className="text-lg font-black tracking-tighter uppercase">FLOWY</span>
+              </div>
+              <p className="text-white/30 text-sm leading-relaxed max-w-xs mb-8 font-medium">
+                The multi-model cognitive orchestration engine for distributed product teams. Built for zero-latency artifact generation.
+              </p>
+            </div>
+            
+            <div>
+              <h4 className="text-[10px] font-mono text-white/20 mb-6 tracking-[0.3em] font-black uppercase">Assembly</h4>
+              <ul className="flex flex-col gap-3">
+                {['Dispatch', 'Archives', 'People', 'Infrastructure'].map(l => (
+                  <li key={l}><a href="#" className="text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">{l}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[10px] font-mono text-white/20 mb-6 tracking-[0.3em] font-black uppercase">Protocols</h4>
+              <ul className="flex flex-col gap-3">
+                {['Security', 'Privacy', 'Logistics', 'Network'].map(l => (
+                  <li key={l}><a href="#" className="text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">{l}</a></li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h4 className="text-[10px] font-mono text-white/20 mb-6 tracking-[0.3em] font-black uppercase">Access</h4>
+              <ul className="flex flex-col gap-3">
+                {['Twitter', 'GitHub', 'Discord', 'Platform'].map(l => (
+                  <li key={l}><a href="#" className="text-white/40 hover:text-white transition-colors text-xs font-bold uppercase tracking-widest">{l}</a></li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <span className="font-bold">FLOWY</span>
-          <span className="text-white/25">— AI Chief of Staff for Product Teams</span>
-        </div>
-        <div className="flex items-center gap-4 text-xs text-white/20">
-          <span>VibeCon Hackathon 2026</span><span>·</span><span>YC Request for Startups</span><span>·</span><span>Polaris School of Technology</span>
+          
+          <div className="flex flex-col md:flex-row justify-between items-center border-t border-white/5 pt-8 gap-6">
+            <div className="text-[10px] text-white/10 font-mono tracking-[0.2em] uppercase">
+              &copy; 2026 ASSEMBLY NODE // FLOWY SYSTEMS. ALL COORDINATES WITHHELD.
+            </div>
+            <div className="flex items-center gap-4 text-[10px] text-white/20 font-bold uppercase tracking-widest">
+              <span>VibeCon Hackathon 2026</span>
+              <span className="size-1 rounded-full bg-white/5" />
+              <span>Polaris School of Technology</span>
+            </div>
+          </div>
         </div>
       </footer>
     </main>
