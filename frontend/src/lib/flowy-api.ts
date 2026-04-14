@@ -24,12 +24,24 @@ export type FlowOutput = {
   raw_transcript?: string;
 };
 
+async function safeFetch(url: string, options?: RequestInit) {
+  try {
+    const response = await fetch(url, options);
+    return response;
+  } catch (error: any) {
+    if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+      throw new Error("Backend server is offline. Please make sure the FastAPI backend is running on port 8000.");
+    }
+    throw error;
+  }
+}
+
 export async function processTranscript(
   transcript: string,
   jira_project_key?: string,
   destination: string = 'jira'
 ): Promise<FlowOutput> {
-  const response = await fetch('http://localhost:8000/process', {
+  const response = await safeFetch('http://localhost:8000/process', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -50,7 +62,7 @@ export async function processTranscript(
 }
 
 export async function sendSlackMessage(message: string): Promise<{ status: string; message: string }> {
-  const response = await fetch('http://localhost:8000/slack/send', {
+  const response = await safeFetch('http://localhost:8000/slack/send', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'
@@ -76,7 +88,7 @@ export async function transcribeAudio(
   if (jira_project_key) formData.append('jira_project_key', jira_project_key);
   formData.append('destination', destination);
 
-  const response = await fetch('http://localhost:8000/transcribe', {
+  const response = await safeFetch('http://localhost:8000/transcribe', {
     method: 'POST',
     body: formData
   });
@@ -96,7 +108,7 @@ export async function chatWithFlowy(
   currentContent: string, 
   mode: 'summary' | 'prd'
 ): Promise<{ response: string; updated_content: string | null }> {
-  const response = await fetch('http://localhost:8000/chat', {
+  const response = await safeFetch('http://localhost:8000/chat', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json'

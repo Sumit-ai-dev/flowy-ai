@@ -202,9 +202,13 @@ export function FlowyWorkspace() {
     };
 
     recognition.onend = () => {
-      // If we are still in a recording state, auto-restart the engine
-      // This solves the "text not showing" issue caused by native timeouts
-      if (isRecording || isFullCapturing) {
+      // FIX: isRecording/isFullCapturing are NOT in the useCallback dependency array,
+      // so they are always stale (always false) inside this closure.
+      // Instead, we check recognitionRef.current which is a live ref:
+      //   - stopRecording() sets recognitionRef.current = null SYNCHRONOUSLY before onend fires
+      //   - If ref is still set, Chrome timed out on us internally → we must restart
+      //   - If ref is null, the user deliberately stopped → clean up
+      if (recognitionRef.current !== null) {
         try {
           recognition.start();
         } catch (e) {
@@ -461,7 +465,7 @@ export function FlowyWorkspace() {
   const selectedDest = DESTINATIONS.find(d => d.id === destination) || DESTINATIONS[0];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-2 min-h-0">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 h-full p-2 min-h-0 relative z-10 selection:bg-primary/30">
       <div className="flex flex-col h-full space-y-4 min-h-0">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-bold flex items-center gap-2">Flowy AI Input</h2>
@@ -498,9 +502,9 @@ export function FlowyWorkspace() {
           </div>
         </div>
 
-        <Card className="flex flex-col flex-grow border shadow-sm min-h-0 overflow-hidden">
-          <CardHeader className="py-3 px-4 bg-muted/30 border-b flex flex-row items-center justify-between shrink-0">
-             <CardTitle className="text-sm font-medium">Meeting Transcript</CardTitle>
+        <Card className="flex flex-col flex-grow border border-white/10 bg-black/40 backdrop-blur-3xl shadow-2xl min-h-0 overflow-hidden rounded-2xl">
+          <CardHeader className="py-3 px-4 bg-white/5 border-b border-white/10 flex flex-row items-center justify-between shrink-0">
+             <CardTitle className="text-sm font-medium text-white/90">Meeting Transcript</CardTitle>
              <div className="flex items-center gap-3">
                 <div className="flex items-center gap-2">
                   <Button variant="ghost" size="sm" className={`h-8 gap-2 text-xs font-semibold rounded-lg transition-all ${isFullCapturing ? 'bg-indigo-500/10 text-indigo-500 animate-pulse' : 'hover:bg-indigo-500/10 hover:text-indigo-500'}`} onClick={isFullCapturing ? stopFullCapture : startFullCapture}>
@@ -517,15 +521,15 @@ export function FlowyWorkspace() {
                 </div>
              </div>
           </CardHeader>
-          <CardContent className="p-0 relative flex-grow min-h-0">
+          <CardContent className="p-0 relative flex-grow min-h-0 bg-transparent">
             <Textarea
               placeholder="Paste a meeting transcript, or click 'Record Live' to transcribe from your microphone..."
-              className="absolute inset-0 border-0 rounded-none focus-visible:ring-0 resize-none p-4 text-sm overflow-y-auto"
+              className="absolute inset-0 border-0 rounded-none focus-visible:ring-0 resize-none p-4 text-sm overflow-y-auto text-white placeholder:text-white/40"
               value={transcript}
               onChange={(e) => setTranscript(e.target.value)}
             />
           </CardContent>
-          <CardFooter className="flex justify-between items-center p-4 bg-muted/10 border-t shrink-0">
+          <CardFooter className="flex justify-between items-center p-4 bg-white/[0.02] border-t border-white/10 shrink-0">
             <div className="flex flex-col gap-2">
               <div className="text-xs text-muted-foreground font-mono">
                 {transcript.split(' ').filter(Boolean).length} words
@@ -546,7 +550,7 @@ export function FlowyWorkspace() {
 
       <div className="flex flex-col h-full space-y-4 min-h-0">
         <h2 className="text-xl font-bold flex items-center gap-2">Agent Output</h2>
-        <Card className="flex flex-col flex-grow border shadow-sm overflow-hidden bg-background min-h-0">
+        <Card className="flex flex-col flex-grow border border-white/10 bg-black/40 backdrop-blur-3xl shadow-2xl overflow-hidden min-h-0 rounded-2xl">
           {(!output && !isLoading) && (
             <div className="flex flex-col items-center justify-center h-full min-h-[300px] text-muted-foreground p-8 text-center space-y-4">
                <Icons.page className="size-12 opacity-20" />
@@ -554,8 +558,8 @@ export function FlowyWorkspace() {
             </div>
           )}
           {isLoading && (
-            <div className="flex flex-col h-full min-h-[300px] bg-slate-950 text-emerald-400 font-mono text-sm p-4 rounded-b-xl overflow-y-auto w-full">
-              <div className="flex items-center gap-2 mb-4 text-emerald-500 font-bold border-b border-emerald-900 pb-2">
+            <div className="flex flex-col h-full min-h-[300px] bg-black/80 text-emerald-400 font-mono text-sm p-4 rounded-b-xl overflow-y-auto w-full">
+              <div className="flex items-center gap-2 mb-4 text-emerald-500 font-bold border-b border-emerald-900/50 pb-2">
                 <Icons.spinner className="size-4 animate-spin" /> LIVE AGENT LOGS
               </div>
               <AnimatePresence>
