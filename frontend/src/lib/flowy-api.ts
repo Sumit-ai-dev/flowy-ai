@@ -39,25 +39,18 @@ async function safeFetch(url: string, options?: RequestInit) {
 export async function processTranscript(
   transcript: string,
   jira_project_key?: string,
-  destination: string = 'jira'
+  destination: string = 'jira',
+  model: string = 'gemini'
 ): Promise<FlowOutput> {
   const response = await safeFetch('http://localhost:8000/process', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      transcript,
-      jira_project_key,
-      destination
-    })
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transcript, jira_project_key, destination, model })
   });
-
   if (!response.ok) {
     const errObj = await response.json().catch(() => ({}));
     throw new Error(errObj.detail || 'Failed to process transcript with backend');
   }
-
   return response.json();
 }
 
@@ -81,51 +74,48 @@ export async function sendSlackMessage(message: string): Promise<{ status: strin
 export async function transcribeAudio(
   audioBlob: Blob,
   jira_project_key?: string,
-  destination: string = 'jira'
+  destination: string = 'jira',
+  model: string = 'gemini'
 ): Promise<FlowOutput> {
   const formData = new FormData();
   formData.append('file', audioBlob, 'recording.webm');
   if (jira_project_key) formData.append('jira_project_key', jira_project_key);
   formData.append('destination', destination);
-
+  formData.append('model', model);
   const response = await safeFetch('http://localhost:8000/transcribe', {
     method: 'POST',
     body: formData
   });
-
   if (!response.ok) {
     const errObj = await response.json().catch(() => ({}));
     throw new Error(errObj.detail || 'Failed to transcribe audio with backend');
   }
-
   return response.json();
 }
 
 export async function chatWithFlowy(
-  userMessage: string, 
-  history: any[], 
-  transcript: string, 
-  currentContent: string, 
-  mode: 'summary' | 'prd'
+  userMessage: string,
+  history: any[],
+  transcript: string,
+  currentContent: string,
+  mode: 'summary' | 'prd',
+  model: string = 'gemini'
 ): Promise<{ response: string; updated_content: string | null }> {
   const response = await safeFetch('http://localhost:8000/chat', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       user_message: userMessage,
       history,
       transcript,
       current_content: currentContent,
-      mode
+      mode,
+      model
     })
   });
-
   if (!response.ok) {
     const errObj = await response.json().catch(() => ({}));
     throw new Error(errObj.detail || 'Chat interaction failed');
   }
-
   return response.json();
 }
